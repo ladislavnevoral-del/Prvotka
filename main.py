@@ -15,7 +15,7 @@ def get_db():
             status_code=503,
             detail="Databáze nenalezena. Nahraj ji přes /api/upload-db."
         )
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 from typing import Optional
@@ -58,6 +58,26 @@ def get_db():
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     return conn
+
+from fastapi import UploadFile, File
+
+@app.post("/api/upload-db")
+async def upload_db(file: UploadFile = File(...)):
+    # vytvoř složku /data pokud neexistuje
+    os.makedirs("/data", exist_ok=True)
+
+    target_path = DB_FILE  # "/data/prvotkar.db"
+
+    # uložit nahraný soubor na disk
+    with open(target_path, "wb") as f:
+        content = await file.read()
+        f.write(content)
+
+    return {
+        "ok": True,
+        "msg": f"Databáze uložena do {target_path}",
+        "size": len(content)
+    }
 
 def row_to_dict(row):
     return dict(row)
