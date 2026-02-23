@@ -270,11 +270,11 @@ tbody td{padding:12px 16px;font-size:13px;vertical-align:middle;}
 
 <script>
 // API URL: na Render.com použij stejnou doménu, lokálně localhost:8000
-const API = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-  ? 'http://localhost:8000/api'
-  : window.location.origin + '/api';
-let beOk=false;
-(async()=>{try{const r=await fetch(API+'/kraje',{signal:AbortSignal.timeout(2000)});if(r.ok)beOk=true;}catch(e){}})();
+// ✅ API vždy míří na stejnou doménu (Render i lokál)
+const API = window.location.origin + '/api';
+
+// ✅ Backend bereme jako dostupný (Render se někdy probouzí se zpožděním)
+let beOk = true;
 
 const KRAJE={
   'CZ010':{n:'Hlavní město Praha',o:['Praha 1','Praha 2','Praha 3','Praha 4','Praha 5','Praha 6','Praha 7','Praha 8','Praha 9','Praha 10','Praha 11','Praha 12','Praha 13','Praha 14','Praha 15','Praha 16']},
