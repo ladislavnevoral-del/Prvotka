@@ -5,7 +5,18 @@ from fastapi.middleware.cors import CORSMiddleware
 import sqlite3
 import io
 import os
+import shutil
 import httpx
+DB_FILE = "/data/prvotkar.db"
+
+# Pokud DB na persistentním disku neexistuje, zkopíruj ji z repozitáře
+if not os.path.exists(DB_FILE):
+    if os.path.exists("prvotkar.db"):
+        print("📦 Kopíruji prvotkar.db na persistentní disk /data ...")
+        os.makedirs("/data", exist_ok=True)
+        shutil.copy("prvotkar.db", DB_FILE)
+    else:
+        print("⚠️ Lokální prvotkar.db nenalezena, DB se vytvoří až při syncu")
 from typing import Optional
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -34,7 +45,8 @@ app.add_middleware(
 )
 
 # ======= DB =======
-DB_FILE = "prvotkar.db"
+DB_FILE = "/data/prvotkar.db"
+print("🗄️ Používám databázi:", DB_FILE)
 
 def get_db():
     if not os.path.exists(DB_FILE):
