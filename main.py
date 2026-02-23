@@ -9,14 +9,15 @@ import shutil
 import httpx
 DB_FILE = "/data/prvotkar.db"
 
-# Pokud DB na persistentním disku neexistuje, zkopíruj ji z repozitáře
-if not os.path.exists(DB_FILE):
-    if os.path.exists("prvotkar.db"):
-        print("📦 Kopíruji prvotkar.db na persistentní disk /data ...")
-        os.makedirs("/data", exist_ok=True)
-        shutil.copy("prvotkar.db", DB_FILE)
-    else:
-        print("⚠️ Lokální prvotkar.db nenalezena, DB se vytvoří až při syncu")
+def get_db():
+    if not os.path.exists(DB_FILE):
+        raise HTTPException(
+            status_code=503,
+            detail="Databáze nenalezena. Nahraj ji přes /api/upload-db."
+        )
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    return conn
 from typing import Optional
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
