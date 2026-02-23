@@ -1,0 +1,42 @@
+========================================
+  PRVOTKÁŘ 3.0 – NÁVOD K POUŽITÍ
+========================================
+
+PRVNÍ SPUŠTĚNÍ (jen jednou):
+------------------------------
+1. Otevři Terminal, jdi do složky Prvotkar:
+   cd ~/Prvotkar
+
+2. Stáhni databázi SVJ a BD z ARES (trvá 10-20 minut):
+   /opt/homebrew/opt/python@3.11/bin/python3.11 sync_ares.py
+
+   → Uvidíš progress bar. Po dokončení máš lokální databázi
+     všech SVJ a BD v České republice (~100 000 záznamů).
+
+3. Spusť backend:
+   /opt/homebrew/opt/python@3.11/bin/python3.11 main.py
+
+4. Spusť frontend (nové okno Terminálu):
+   cd ~/Prvotkar
+   /opt/homebrew/opt/python@3.11/bin/python3.11 -m http.server 3000
+
+5. Otevři v prohlížeči: http://localhost:3000
+
+
+KAŽDODENNÍ POUŽITÍ:
+---------------------
+Stačí spustit backend a frontend (kroky 3 a 4).
+Databáze zůstává uložena jako soubor prvotkar.db.
+
+
+OBNOVA DAT (např. 1x týdně):
+------------------------------
+Spusť znovu: python3 sync_ares.py
+Data se aktualizují automaticky.
+
+
+DOUBLE-CLICK SPOUŠTĚČE:
+--------------------------
+SPUSTIT_BACKEND.command   – dvojklik = spustí backend
+SPUSTIT_FRONTEND.command  – dvojklik = spustí frontend
+========================================

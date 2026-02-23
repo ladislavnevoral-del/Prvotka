@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Prvotkář 3.0</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root {
+  --bg:       #f5f4f0;
+  --bg2:      #ffffff;
+  --bg3:      #f0eeea;
+  --bg4:      #e8e5df;
+  --border:   #ddd9d0;
+  --border2:  #ccc8be;
+  --accent:   #1a56a0;
+  --accent2:  #2563eb;
+  --accent-lt:#dbeafe;
+  --accent-glow: rgba(37,99,235,0.12);
+  --text:     #1a1917;
+  --text2:    #4b4740;
+  --text3:    #8a8278;
+  --success:  #0d7a4e;
+  --success-lt:#d1fae5;
+  --warn:     #b45309;
+  --warn-lt:  #fef3c7;
+  --danger:   #c0392b;
+  --danger-lt:#fee2e2;
+  --radius:   12px;
+  --radius-sm:8px;
+  --shadow:   0 1px 3px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.06);
+  --shadow-lg:0 4px 24px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.06);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
+.app{display:flex;flex-direction:column;min-height:100vh;}
+header{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 28px;height:64px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200;box-shadow:0 1px 0 var(--border),0 2px 8px rgba(0,0,0,0.04);}
+.logo{display:flex;align-items:center;gap:12px;font-size:19px;font-weight:700;letter-spacing:-0.5px;color:var(--text);}
+.logo-mark{width:36px;height:36px;background:linear-gradient(135deg,#1a56a0,#2563eb);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 2px 8px rgba(37,99,235,0.3);}
+.logo-sub{font-size:11px;font-weight:400;color:var(--text3);letter-spacing:0.5px;display:block;margin-top:-2px;}
+.tab-nav{display:flex;gap:2px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px;}
+.tab-btn{padding:7px 18px;border:none;background:none;color:var(--text2);border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;font-family:'Outfit',sans-serif;transition:all 0.18s;display:flex;align-items:center;gap:6px;}
+.tab-btn.active{background:var(--bg2);color:var(--accent2);box-shadow:var(--shadow);font-weight:600;}
+.tab-btn:hover:not(.active){background:var(--bg4);color:var(--text);}
+.header-right{display:flex;align-items:center;gap:16px;}
+.vtag{font-size:11px;color:var(--text3);background:var(--bg3);border:1px solid var(--border);padding:2px 8px;border-radius:100px;font-family:'JetBrains Mono',monospace;}
+/* ── Type toggle SVJ / BD ── */
+.type-toggle{display:flex;background:var(--bg3);border:1.5px solid var(--border);border-radius:10px;padding:3px;gap:2px;}
+.type-btn{padding:7px 20px;border:none;background:none;border-radius:8px;font-size:13px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;gap:7px;color:var(--text3);white-space:nowrap;}
+.type-btn.active-svj{background:linear-gradient(135deg,#1a56a0,#2563eb);color:white;box-shadow:0 2px 8px rgba(37,99,235,0.28);}
+.type-btn.active-bd{background:linear-gradient(135deg,#7c3aed,#a855f7);color:white;box-shadow:0 2px 8px rgba(124,58,237,0.28);}
+.type-btn:hover:not(.active-svj):not(.active-bd){background:var(--bg4);color:var(--text2);}
+.bd-mode .btn-go{background:linear-gradient(135deg,#7c3aed,#a855f7);box-shadow:0 2px 8px rgba(124,58,237,0.25);}
+.bd-mode .btn-go:hover{box-shadow:0 4px 16px rgba(124,58,237,0.35);}
+.bd-mode .pfill{background:linear-gradient(90deg,#7c3aed,#c084fc);}
+.bd-mode .pill b{color:#7c3aed;}
+.bd-mode .pgb.active{background:#7c3aed;border-color:#7c3aed;}
+main{flex:1;padding:28px;max-width:1440px;margin:0 auto;width:100%;}
+.search-panel{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:24px 28px;margin-bottom:24px;box-shadow:var(--shadow);}
+.search-head{display:flex;align-items:center;gap:10px;margin-bottom:20px;}
+.search-icon{width:32px;height:32px;background:var(--accent-lt);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:15px;}
+.search-head h2{font-size:14px;font-weight:600;color:var(--text2);}
+.sgrid{display:grid;grid-template-columns:2fr 1.4fr 1.4fr 1.8fr auto;gap:14px;align-items:end;}
+@media(max-width:1000px){.sgrid{grid-template-columns:1fr 1fr;}.sgrid .btn-go{grid-column:1/-1;justify-content:center;}}
+@media(max-width:580px){.sgrid{grid-template-columns:1fr;}}
+.field{display:flex;flex-direction:column;gap:5px;}
+.field label{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.8px;}
+.field input,.field select{background:var(--bg3);border:1.5px solid var(--border);color:var(--text);padding:10px 14px;border-radius:var(--radius-sm);font-size:14px;font-family:'Outfit',sans-serif;transition:all 0.18s;outline:none;width:100%;-webkit-appearance:none;}
+.field input::placeholder{color:var(--text3);}
+.field input:focus,.field select:focus{border-color:var(--accent2);background:var(--bg2);box-shadow:0 0 0 3px var(--accent-glow);}
+.field select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238a8278' d='M6 8L1 3h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px;cursor:pointer;}
+.field select:disabled{opacity:0.5;cursor:not-allowed;}
+.btn-go{background:linear-gradient(135deg,#1a56a0,#2563eb);border:none;color:white;padding:11px 26px;border-radius:var(--radius-sm);font-size:14px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;transition:all 0.18s;display:flex;align-items:center;gap:8px;white-space:nowrap;height:44px;box-shadow:0 2px 8px rgba(37,99,235,0.25);}
+.btn-go:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(37,99,235,0.35);}
+.btn-go:disabled{opacity:0.55;cursor:not-allowed;transform:none;box-shadow:none;}
+.btn-sec{background:var(--bg2);border:1.5px solid var(--border2);color:var(--text2);padding:8px 16px;border-radius:var(--radius-sm);font-size:13px;font-weight:500;font-family:'Outfit',sans-serif;cursor:pointer;transition:all 0.18s;display:flex;align-items:center;gap:6px;box-shadow:0 1px 3px rgba(0,0,0,0.06);}
+.btn-sec:hover{border-color:var(--accent2);color:var(--accent2);background:var(--accent-lt);}
+.btn-xl{background:linear-gradient(135deg,#0d7a4e,#059669);border:none;color:white;padding:8px 16px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;transition:all 0.18s;display:flex;align-items:center;gap:6px;box-shadow:0 2px 6px rgba(13,122,78,0.2);}
+.btn-xl:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(13,122,78,0.3);}
+.pbar{height:3px;background:var(--border);border-radius:100px;overflow:hidden;margin-bottom:20px;display:none;}
+.pfill{height:100%;background:linear-gradient(90deg,var(--accent),#60a5fa);border-radius:100px;transition:width 0.25s ease;}
+.stats-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px;}
+.stats-left{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.pill{background:var(--bg2);border:1px solid var(--border);padding:5px 12px;border-radius:100px;font-size:12px;color:var(--text2);display:flex;align-items:center;gap:5px;box-shadow:0 1px 2px rgba(0,0,0,0.05);}
+.pill b{color:var(--accent2);font-weight:700;}
+.act-row{display:flex;gap:8px;flex-wrap:wrap;}
+.table-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);}
+.tscroll{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;}
+thead th{background:var(--bg3);border-bottom:1.5px solid var(--border);padding:11px 16px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.9px;color:var(--text3);white-space:nowrap;cursor:pointer;user-select:none;transition:color 0.15s;}
+thead th:hover{color:var(--text);}
+tbody tr{border-bottom:1px solid var(--bg3);transition:background 0.12s;cursor:pointer;}
+tbody tr:hover{background:#f8f6f2;}
+tbody tr:last-child{border-bottom:none;}
+tbody td{padding:12px 16px;font-size:13px;vertical-align:middle;}
+.tdn{font-weight:600;max-width:300px;}
+.tdn small{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text3);display:block;margin-top:2px;font-weight:400;}
+.tda{color:var(--text2);max-width:220px;font-size:12px;line-height:1.5;}
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:100px;font-size:11px;font-weight:600;}
+.b-ok{background:var(--success-lt);color:var(--success);}
+.b-no{background:var(--danger-lt);color:var(--danger);}
+.ico-c{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text3);background:var(--bg3);border:1px solid var(--border);padding:3px 8px;border-radius:5px;}
+.yr-t{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text3);background:var(--bg3);padding:3px 8px;border-radius:5px;border:1px solid var(--border);}
+.rbtn{background:none;border:1.5px solid var(--border2);color:var(--text2);padding:4px 11px;border-radius:6px;font-size:11px;font-weight:500;cursor:pointer;font-family:'Outfit',sans-serif;transition:all 0.15s;}
+.rbtn:hover{border-color:var(--accent2);color:var(--accent2);background:var(--accent-lt);}
+.pagination{display:flex;align-items:center;justify-content:center;gap:6px;padding:16px 20px;border-top:1px solid var(--bg3);background:var(--bg3);}
+.pgb{min-width:34px;height:34px;border:1.5px solid var(--border);background:var(--bg2);color:var(--text2);border-radius:7px;cursor:pointer;font-size:13px;font-family:'Outfit',sans-serif;transition:all 0.15s;display:flex;align-items:center;justify-content:center;}
+.pgb.active{background:var(--accent2);border-color:var(--accent2);color:white;font-weight:700;}
+.pgb:hover:not(.active):not(:disabled){border-color:var(--accent2);color:var(--accent2);}
+.pgb:disabled{opacity:0.3;cursor:not-allowed;}
+.empty{text-align:center;padding:80px 40px;color:var(--text3);}
+.empty-ico{font-size:52px;margin-bottom:16px;opacity:0.6;}
+.empty-ttl{font-size:18px;font-weight:700;color:var(--text2);margin-bottom:8px;}
+.empty-dsc{font-size:14px;line-height:1.7;}
+.loading{text-align:center;padding:60px;}
+.spin{width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent2);border-radius:50%;animation:spin 0.75s linear infinite;margin:0 auto 14px;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.map-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);}
+#map{height:560px;}
+.map-bar{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--border);background:var(--bg3);gap:12px;flex-wrap:wrap;}
+.map-bar-t{font-size:13px;font-weight:600;color:var(--text2);display:flex;align-items:center;gap:8px;}
+.map-st{font-size:12px;color:var(--text3);}
+.modal-ov{position:fixed;inset:0;background:rgba(26,25,23,0.5);z-index:999;display:flex;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(3px);}
+.modal{background:var(--bg2);border:1px solid var(--border);border-radius:16px;width:100%;max-width:680px;max-height:90vh;overflow-y:auto;position:relative;box-shadow:var(--shadow-lg);animation:mIn 0.2s ease;}
+@keyframes mIn{from{transform:scale(0.97) translateY(8px);opacity:0;}to{transform:scale(1) translateY(0);opacity:1;}}
+.m-head{padding:22px 24px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg2);z-index:10;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;}
+.m-title{font-size:16px;font-weight:700;line-height:1.3;margin-bottom:3px;}
+.m-sub{font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace;}
+.m-close{background:var(--bg3);border:1.5px solid var(--border);color:var(--text2);width:30px;height:30px;border-radius:7px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px;transition:all 0.15s;}
+.m-close:hover{border-color:var(--danger);color:var(--danger);background:var(--danger-lt);}
+.m-body{padding:24px;}
+.sec{margin-bottom:24px;}
+.sec:last-child{margin-bottom:0;}
+.sec-t{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:var(--text3);margin-bottom:12px;display:flex;align-items:center;gap:8px;}
+.sec-t::after{content:'';flex:1;height:1px;background:var(--border);}
+.igrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.ii{}
+.il{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;}
+.iv{font-size:14px;font-weight:600;}
+.prow{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:11px 14px;display:flex;align-items:center;gap:12px;margin-bottom:8px;}
+.av{width:34px;height:34px;background:linear-gradient(135deg,#1a56a0,#7c3aed);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:white;flex-shrink:0;}
+.pn{font-size:13px;font-weight:600;}
+.pr{font-size:11px;color:var(--text3);}
+.lrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;}
+.el{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:var(--radius-sm);font-size:12px;font-weight:500;text-decoration:none;transition:all 0.15s;border:1.5px solid;}
+.el-b{color:var(--accent2);border-color:rgba(37,99,235,0.3);background:var(--accent-lt);}
+.el-b:hover{background:rgba(37,99,235,0.2);}
+.el-c{color:#059669;border-color:rgba(5,150,105,0.3);background:rgba(5,150,105,0.08);}
+.el-c:hover{background:rgba(5,150,105,0.18);}
+.el-g{color:var(--success);border-color:rgba(13,122,78,0.3);background:var(--success-lt);}
+.el-g:hover{background:rgba(13,122,78,0.2);}
+.el-a{color:var(--warn);border-color:rgba(180,83,9,0.3);background:var(--warn-lt);}
+.el-a:hover{background:rgba(180,83,9,0.2);}
+.ac-wrap{position:relative;}
+.ac-list{position:absolute;top:calc(100% + 2px);left:0;right:0;background:var(--bg2);border:1.5px solid var(--accent2);border-radius:0 0 var(--radius-sm) var(--radius-sm);z-index:600;max-height:220px;overflow-y:auto;box-shadow:var(--shadow-lg);}
+.ac-item{padding:10px 14px;font-size:13px;cursor:pointer;transition:background 0.12s;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--bg3);}
+.ac-item:last-child{border-bottom:none;}
+.ac-item:hover,.ac-item.hl{background:var(--accent-lt);color:var(--accent2);}
+.demo-ban{background:linear-gradient(135deg,var(--warn-lt),#fffbeb);border:1.5px solid rgba(180,83,9,0.25);border-radius:var(--radius-sm);padding:10px 16px;font-size:12px;color:var(--warn);display:flex;align-items:center;gap:8px;margin-bottom:16px;}
+.toasts{position:fixed;bottom:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:8px;}
+.toast{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:11px 16px;font-size:13px;display:flex;align-items:center;gap:10px;min-width:260px;box-shadow:var(--shadow-lg);animation:tIn 0.25s ease;}
+@keyframes tIn{from{transform:translateX(16px);opacity:0;}to{transform:translateX(0);opacity:1;}}
+.t-ok{border-left:3px solid var(--success);}
+.t-err{border-left:3px solid var(--danger);}
+.t-info{border-left:3px solid var(--accent2);}
+::-webkit-scrollbar{width:6px;height:6px;}
+::-webkit-scrollbar-track{background:var(--bg3);}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:100px;}
+@media(max-width:720px){main{padding:16px;}header{padding:0 16px;}.search-panel{padding:16px;}.tab-btn span{display:none;}}
+</style>
+</head>
+<body>
+<div class="app">
+
+<header>
+  <div class="logo">
+    <div class="logo-mark">🔑</div>
+    <div>Prvotkář 3.0<span class="logo-sub">SVJ &amp; BD vyhledávač</span></div>
+  </div>
+  <div class="header-right">
+    <div class="type-toggle" id="type-toggle">
+      <button class="type-btn active-svj" id="btn-svj" onclick="setType('svj')">🏢 SVJ</button>
+      <button class="type-btn" id="btn-bd" onclick="setType('bd')">🏘 Bytové družstvo</button>
+    </div>
+    <span class="vtag">v1.0</span>
+    <div id="db-stats" style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text3);">
+      <span style="background:var(--bg3);border:1px solid var(--border);padding:3px 10px;border-radius:100px;">
+        SVJ: <b id="stat-svj" style="color:var(--accent2);">…</b>
+      </span>
+      <span style="background:var(--bg3);border:1px solid var(--border);padding:3px 10px;border-radius:100px;">
+        BD: <b id="stat-bd" style="color:#7c3aed;">…</b>
+      </span>
+      <button id="btn-sync" onclick="startSync()" title="Aktualizovat databázi z ARES"
+        style="background:var(--bg3);border:1.5px solid var(--border);color:var(--text2);padding:4px 10px;border-radius:8px;font-size:12px;font-family:'Outfit',sans-serif;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all 0.15s;"
+        onmouseover="this.style.borderColor='#2563eb';this.style.color='#2563eb';"
+        onmouseout="this.style.borderColor='';this.style.color='';">
+        🔄 Sync DB
+      </button>
+    </div>
+    <div class="tab-nav">
+      <button class="tab-btn active" id="tab-list" onclick="showTab('list')"><span>☰</span> Seznam</button>
+      <button class="tab-btn" id="tab-map" onclick="showTab('map')"><span>🗺</span> Mapa</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="search-panel">
+    <div class="search-head">
+      <div class="search-icon">🔍</div>
+      <h2>Vyhledávání — zadejte obec nebo městskou část</h2>
+    </div>
+    <div class="sgrid">
+      <div class="field ac-wrap">
+        <label>Obec / Část města</label>
+        <input id="inp" type="text" placeholder="Praha 9, Brno, Plzeň…" autocomplete="off"
+          oninput="acIn(this.value)" onkeydown="acKey(event);if(event.key==='Enter'&&document.getElementById('acl').style.display==='none')doSearch();"/>
+        <div class="ac-list" id="acl" style="display:none"></div>
+      </div>
+      <div class="field">
+        <label>Městská část / Část obce</label>
+        <select id="sel-cast" disabled onchange="onCastChange()">
+          <option value="">— Celá obec —</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Ulice</label>
+        <select id="sel-ulice" disabled onchange="onUliceChange()">
+          <option value="">— Všechny ulice —</option>
+        </select>
+      </div>
+      <button class="btn-go" id="btn-go" onclick="doSearch()">
+        <span id="go-ico">⚡</span> <span id="go-label">Vygeneruj SVJ</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="pbar" id="pbar"><div class="pfill" id="pfill" style="width:0%"></div></div>
+
+  <div id="view-list"><div id="res"></div></div>
+
+  <div id="view-map" style="display:none">
+    <div class="map-wrap">
+      <div class="map-bar">
+        <div class="map-bar-t">📍 Mapa SVJ</div>
+        <div class="map-st" id="mst">Nejdříve vygenerujte seznam SVJ</div>
+        <button class="btn-sec" id="btn-geo" onclick="doGeocode()" style="display:none">🔄 Načíst body</button>
+      </div>
+      <div id="map"></div>
+    </div>
+  </div>
+</main>
+</div>
+
+<div class="modal-ov" id="modal" style="display:none" onclick="if(event.target===this)closeMod()">
+  <div class="modal">
+    <div class="m-head">
+      <div><div class="m-title" id="mt">Detail SVJ</div><div class="m-sub" id="ms"></div></div>
+      <button class="m-close" onclick="closeMod()">✕</button>
+    </div>
+    <div class="m-body" id="mb"><div class="loading"><div class="spin"></div>Načítám…</div></div>
+  </div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+
+<script>
+// API URL: na Render.com použij stejnou doménu, lokálně localhost:8000
+const API = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+  ? 'http://localhost:8000/api'
+  : window.location.origin + '/api';
+let beOk=false;
+(async()=>{try{const r=await fetch(API+'/kraje',{signal:AbortSignal.timeout(2000)});if(r.ok)beOk=true;}catch(e){}})();
+
+const KRAJE={
+  'CZ010':{n:'Hlavní město Praha',o:['Praha 1','Praha 2','Praha 3','Praha 4','Praha 5','Praha 6','Praha 7','Praha 8','Praha 9','Praha 10','Praha 11','Praha 12','Praha 13','Praha 14','Praha 15','Praha 16']},
+  'CZ020':{n:'Středočeský kraj',o:['Benešov','Beroun','Kladno','Kolín','Kutná Hora','Mělník','Mladá Boleslav','Nymburk','Praha-východ','Praha-západ','Příbram','Rakovník']},
+  'CZ031':{n:'Jihočeský kraj',o:['České Budějovice','Český Krumlov','Jindřichův Hradec','Písek','Prachatice','Strakonice','Tábor']},
+  'CZ032':{n:'Plzeňský kraj',o:['Domažlice','Klatovy','Plzeň-jih','Plzeň-město','Plzeň-sever','Rokycany','Tachov']},
+  'CZ041':{n:'Karlovarský kraj',o:['Cheb','Karlovy Vary','Sokolov']},
+  'CZ042':{n:'Ústecký kraj',o:['Děčín','Chomutov','Litoměřice','Louny','Most','Teplice','Ústí nad Labem']},
+  'CZ051':{n:'Liberecký kraj',o:['Česká Lípa','Jablonec nad Nisou','Liberec','Semily']},
+  'CZ052':{n:'Královéhradecký kraj',o:['Hradec Králové','Jičín','Náchod','Rychnov nad Kněžnou','Trutnov']},
+  'CZ053':{n:'Pardubický kraj',o:['Chrudim','Pardubice','Svitavy','Ústí nad Orlicí']},
+  'CZ063':{n:'Kraj Vysočina',o:['Havlíčkův Brod','Jihlava','Pelhřimov','Třebíč','Žďár nad Sázavou']},
+  'CZ064':{n:'Jihomoravský kraj',o:['Blansko','Brno-město','Brno-venkov','Břeclav','Hodonín','Vyškov','Znojmo']},
+  'CZ071':{n:'Olomoucký kraj',o:['Jeseník','Olomouc','Prostějov','Přerov','Šumperk']},
+  'CZ072':{n:'Zlínský kraj',o:['Kroměříž','Uherské Hradiště','Vsetín','Zlín']},
+  'CZ080':{n:'Moravskoslezský kraj',o:['Bruntál','Frýdek-Místek','Karviná','Nový Jičín','Opava','Ostrava-město']},
+};
+
+const CITIES=['Praha','Praha 1','Praha 2','Praha 3','Praha 4','Praha 5','Praha 6','Praha 7','Praha 8','Praha 9','Praha 10','Praha 11','Praha 12','Praha 13','Praha 14','Praha 15','Praha 16','Praha 17','Praha 18','Praha 19','Praha 20','Praha 21','Praha 22','Brno','Ostrava','Plzeň','Liberec','Olomouc','České Budějovice','Hradec Králové','Pardubice','Zlín','Havířov','Kladno','Most','Opava','Frýdek-Místek','Karviná','Jihlava','Teplice','Děčín','Karlovy Vary','Chomutov','Prostějov','Přerov','Jablonec nad Nisou','Mladá Boleslav','Třebíč','Ústí nad Labem','Znojmo','Kolín','Příbram','Tábor'];
+
+function mkDemoBD(obec){const ns=['Stavební bytové družstvo','BD nájemní domy','Bytové družstvo','Lidové BD','Komunální bytové domy','Nájemní BD'];const ss=['Hlavní','Nádražní','Polní','Zahradní','Lesní','Školní','Luční','Lipová','Borová','Mánesova'];const out=[];const cnt=Math.floor(Math.random()*25)+8;for(let i=0;i<cnt;i++){const cp=Math.floor(Math.random()*200)+1;const yr=1958+Math.floor(Math.random()*50);const ico=String(10000000+Math.floor(Math.random()*89999999));out.push({ico,obchodniJmeno:ns[i%ns.length]+' '+obec+(i>5?' '+(i+1):''),stavSubjektu:Math.random()>0.08?'AKTIVNI':'NEAKTIVNI',datumVzniku:yr+'-0'+((i%9)+1)+'-01',sidlo:{nazevUlice:ss[i%ss.length],cisloDomovni:cp,cisloOrientacni:Math.floor(Math.random()*20)+1,nazevObce:obec,psc:'10000'}});}return out;}
+function mkDemo(obec,type){if(type==='bd')return mkDemoBD(obec);
+  const ns=['Zátiší','Slunečná','Nad Parkem','U Háje','Bytový dům','Na Kopci','Zelené údolí','Panorama','Centrum','Vyšehrad','Nová čtvrť','Lipová alej'];
+  const ss=['Hlavní','Nádražní','Polní','Zahradní','Lesní','Školní','Luční','Lipová','Borová','Žerotínova','Rooseveltova','Mánesova'];
+  const out=[];const cnt=Math.floor(Math.random()*60)+30;
+  for(let i=0;i<cnt;i++){
+    const cp=Math.floor(Math.random()*200)+1;
+    const yr=1995+Math.floor(Math.random()*28);
+    const ico=String(10000000+Math.floor(Math.random()*89999999));
+    out.push({ico,obchodniJmeno:`Společenství vlastníků ${ns[i%ns.length]} ${obec} čp. ${cp}`,stavSubjektu:'AKTIVNI',datumVzniku:`${yr}-${String(Math.floor(Math.random()*12)+1).padStart(2,'0')}-01`,sidlo:{nazevUlice:ss[i%ss.length],cisloDomovni:cp,cisloOrientacni:Math.floor(Math.random()*20)+1,nazevObce:obec,psc:'10000'}});
+  }
+  return out;
+}
+
+const S={list:[],total:0,page:1,ps:50,sc:null,sd:'asc',obec:'',demo:false,map:null,mok:false,mrks:[],aci:[],aix:-1,type:'svj'};
+
+function setType(t){
+  S.type=t;
+  const app=document.querySelector('.app');
+  const btnSvj=document.getElementById('btn-svj');
+  const btnBd=document.getElementById('btn-bd');
+  const goLabel=document.getElementById('go-label');
+  if(t==='bd'){
+    app.classList.add('bd-mode');
+    btnSvj.className='type-btn';
+    btnBd.className='type-btn active-bd';
+    goLabel.textContent='Vygeneruj BD';
+  }else{
+    app.classList.remove('bd-mode');
+    btnSvj.className='type-btn active-svj';
+    btnBd.className='type-btn';
+    goLabel.textContent='Vygeneruj SVJ';
+  }
+  S.list=[];S.total=0;S.page=1;
+  const lbl=t==='bd'?'Vygeneruj BD':'Vygeneruj SVJ';
+  document.getElementById('res').innerHTML=emH(t==='bd'?'🏘':'🏗️','Připraveno k vyhledávání','Zadejte název obce nebo části města a klikněte na <strong>'+lbl+'</strong>');
+  document.getElementById('btn-geo').style.display='none';
+  document.getElementById('mst').textContent='Nejdříve vygenerujte seznam';
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+  document.getElementById('res').innerHTML=emH('🏗️','Připraveno k vyhledávání','Zadejte název obce nebo městské části a klikněte na <strong>Vygeneruj SVJ</strong>');
+});
+
+function showTab(t){
+  document.getElementById('view-list').style.display=t==='list'?'block':'none';
+  document.getElementById('view-map').style.display=t==='map'?'block':'none';
+  document.getElementById('tab-list').classList.toggle('active',t==='list');
+  document.getElementById('tab-map').classList.toggle('active',t==='map');
+  if(t==='map'&&!S.mok)initMap();
+}
+
+function onKraj(){}
+
+let acT=null;
+function acIn(v){clearTimeout(acT);if(v.length<1){hideAc();return;}acT=setTimeout(()=>{showAc(v);if(v.length>=3)preloadFilters(v);},400);}
+function showAc(q){
+  const f=CITIES.filter(c=>c.toLowerCase().startsWith(q.toLowerCase())).slice(0,9);
+  S.aci=f;S.aix=-1;
+  const el=document.getElementById('acl');
+  if(!f.length){hideAc();return;}
+  el.innerHTML=f.map((c,i)=>`<div class="ac-item" data-i="${i}" onclick="pickAc('${c.replace(/'/g,"\\'")}')"><span style="font-size:12px;opacity:0.6">📍</span>${c}</div>`).join('');
+  el.style.display='block';
+}
+function acKey(e){
+  const el=document.getElementById('acl');
+  if(el.style.display==='none')return;
+  if(e.key==='ArrowDown'){S.aix=Math.min(S.aix+1,S.aci.length-1);hlAc();}
+  else if(e.key==='ArrowUp'){S.aix=Math.max(S.aix-1,0);hlAc();e.preventDefault();}
+  else if(e.key==='Enter'&&S.aix>=0){pickAc(S.aci[S.aix]);e.preventDefault();}
+  else if(e.key==='Escape')hideAc();
+}
+function hlAc(){document.querySelectorAll('.ac-item').forEach((el,i)=>el.classList.toggle('hl',i===S.aix));}
+function pickAc(v){document.getElementById('inp').value=v;hideAc();preloadFilters(v);}
+function hideAc(){document.getElementById('acl').style.display='none';}
+document.addEventListener('click',e=>{if(!e.target.closest('.ac-wrap'))hideAc();});
+
+async function doSearch(){
+  const obec=document.getElementById('inp').value.trim();
+  if(!obec){toast('Zadejte název obce','err');document.getElementById('inp').focus();return;}
+  S.obec=obec;S.page=1;hideAc();
+  const btn=document.getElementById('btn-go');
+  btn.disabled=true;document.getElementById('go-ico').textContent='⏳';
+  document.getElementById('pbar').style.display='block';
+  progA(0,60);
+
+  try{
+    let list=[],total=0;S.demo=false;
+    if(beOk){
+        const p=new URLSearchParams({obec,pocet:'2000',typ:S.type});
+      const r=await fetch(`${API}/svj?${p}`);
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const d=await r.json();list=d.subjekty||[];total=d.celkem||list.length;
+    }else{
+      await slp(800);list=mkDemo(obec,S.type);total=list.length;S.demo=true;
+    }
+    progA(60,100);
+    S.list=list;S.total=total;
+    populateFilters(list);
+    renderT();
+    toast(`Nalezeno ${total} ${S.type==='bd'?'BD':'SVJ'} v „${obec}"${S.demo?' (demo data)':''}`,S.demo?'info':'ok');
+    document.getElementById('btn-geo').style.display='inline-flex';
+    document.getElementById('mst').textContent=`${total} SVJ připraveno`;
+  }catch(e){
+    toast('Chyba: '+e.message,'err');
+    document.getElementById('res').innerHTML=emH('⚠️','Chyba při načítání',`${esc(e.message)}<br><br>Backend není dostupný – spusťte <code style="color:var(--accent2)">python main.py</code>`);
+  }finally{
+    btn.disabled=false;document.getElementById('go-ico').textContent='⚡';
+    hideProg();
+  }
+}
+
+let pt=null;
+function progA(f,t){const el=document.getElementById('pfill');let c=f;clearInterval(pt);pt=setInterval(()=>{c+=1.5;el.style.width=Math.min(c,t)+'%';if(c>=t)clearInterval(pt);},25);}
+function hideProg(){clearInterval(pt);document.getElementById('pfill').style.width='100%';setTimeout(()=>{document.getElementById('pbar').style.display='none';document.getElementById('pfill').style.width='0%';},400);}
+
+function renderT(){
+  const area=document.getElementById('res');
+  if(!S.list.length){area.innerHTML=emH('🔍','Žádné výsledky',`V obci <strong>${esc(S.obec)}</strong> nebyly nalezeny žádné SVJ.`);return;}
+  const castFilter=document.getElementById('sel-cast')?.value||'';
+  const uliceFilter=document.getElementById('sel-ulice')?.value||'';
+  const filtered=S.list.filter(sv=>{
+    const sd=sv.sidlo||{};
+    if(castFilter&&sd.nazevCastiObce!==castFilter)return false;
+    if(uliceFilter&&sd.nazevUlice!==uliceFilter)return false;
+    return true;
+  });
+  const start=(S.page-1)*S.ps;
+  const rows=filtered.slice(start,start+S.ps);
+  const displayTotal=filtered.length;
+  let h=`
+  ${S.demo?`<div class="demo-ban">⚠️ <strong>Demo režim</strong> – ukázková data (${S.type==='bd'?'Bytová družstva':'SVJ'}). Spusťte backend pro data z ARES.</div>`:''}
+  <div class="stats-bar">
+    <div class="stats-left">
+      <div class="pill">${S.type==='bd'?'BD':'SVJ'}: <b>${displayTotal}</b>${displayTotal!==S.total?' z '+S.total:''}</div>
+      <div class="pill">Strana: <b>${S.page}/${Math.ceil(S.list.length/S.ps)}</b></div>
+      <div class="pill">Obec: <b>${esc(S.obec)}</b></div>
+    </div>
+    <div class="act-row">
+      <button class="btn-sec" onclick="showTab('map');doGeocode()">🗺 Na mapě</button>
+      <button class="btn-xl" onclick="doExport()">📊 Excel</button>
+    </div>
+  </div>
+  <div class="table-wrap"><div class="tscroll"><table>
+  <thead><tr>
+    <th onclick="srt('obchodniJmeno')">Název SVJ ${S.sc==='obchodniJmeno'?(S.sd==='asc'?'↑':'↓'):''}</th>
+    <th>IČO</th><th>Adresa</th>
+    <th onclick="srt('datumVzniku')">Rok ${S.sc==='datumVzniku'?(S.sd==='asc'?'↑':'↓'):''}</th>
+    <th>Stav</th><th>Detail</th>
+  </tr></thead><tbody>`;
+  rows.forEach(sv=>{
+    const sd=sv.sidlo||{};
+    const ul=sd.nazevUlice||sd.nazevObce||'';
+    const cp=sd.cisloDomovni?(String(sd.cisloDomovni)+(sd.cisloOrientacni?'/'+sd.cisloOrientacni:'')):'';
+    const ok=!sv.stavSubjektu||sv.stavSubjektu==='AKTIVNI'||sv.stavSubjektu===null;
+    const yr=sv.datumVzniku?sv.datumVzniku.slice(0,4):'–';
+    const ns=(sv.obchodniJmeno||'').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    h+=`<tr onclick="openDet('${sv.ico}','${ns}')">
+      <td class="tdn">${esc(sv.obchodniJmeno||'–')}<small>IČO: ${sv.ico}</small></td>
+      <td><span class="ico-c">${sv.ico}</span></td>
+      <td class="tda">${ul?esc(ul)+(cp?' '+cp:''):'–'}<br>${esc(sd.nazevObce||'')}</td>
+      <td><span class="yr-t">${yr}</span></td>
+      <td><span class="badge ${ok?'b-ok':'b-no'}">${ok?'● Aktivní':'● Neaktivní'}</span></td>
+      <td><button class="rbtn" onclick="event.stopPropagation();openDet('${sv.ico}','${ns}')">Otevřít →</button></td>
+    </tr>`;
+  });
+  h+=`</tbody></table></div>${renderPg(filtered)}</div>`;
+  area.innerHTML=h;
+}
+
+function renderPg(filtered){
+  const tp=Math.ceil((filtered||S.list).length/S.ps);if(tp<=1)return'';
+  const pages=[];
+  for(let i=1;i<=tp;i++){if(i===1||i===tp||(i>=S.page-2&&i<=S.page+2))pages.push(i);else if(pages[pages.length-1]!=='…')pages.push('…');}
+  let h=`<div class="pagination"><button class="pgb" onclick="goP(${S.page-1})" ${S.page===1?'disabled':''}>‹</button>`;
+  pages.forEach(p=>{if(p==='…')h+=`<span style="color:var(--text3);padding:0 2px">…</span>`;else h+=`<button class="pgb ${p===S.page?'active':''}" onclick="goP(${p})">${p}</button>`;});
+  h+=`<button class="pgb" onclick="goP(${S.page+1})" ${S.page===tp?'disabled':''}>›</button></div>`;
+  return h;
+}
+function goP(p){const tp=Math.ceil(S.list.length/S.ps);if(p<1||p>tp)return;S.page=p;renderT();window.scrollTo({top:0,behavior:'smooth'});}
+function srt(col){if(S.sc===col)S.sd=S.sd==='asc'?'desc':'asc';else{S.sc=col;S.sd='asc';}S.list.sort((a,b)=>{let va=a[col]||'',vb=b[col]||'';return S.sd==='asc'?va.localeCompare(vb):vb.localeCompare(va);});S.page=1;renderT();}
+
+function initMap(){S.map=L.map('map',{center:[49.8,15.5],zoom:7});L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:19}).addTo(S.map);S.mok=true;}
+
+async function doGeocode(){
+  if(!S.mok)initMap();
+  if(!S.list.length){toast('Nejdříve vygenerujte seznam','err');return;}
+  showTab('map');
+  const btn=document.getElementById('btn-geo');btn.disabled=true;
+  document.getElementById('mst').textContent='⏳ Geocóduji adresy…';
+  S.mrks.forEach(m=>m.remove());S.mrks=[];
+  const bounds=[];
+  // Použij filtrovaný seznam (stejná logika jako renderT)
+  const castFilter=document.getElementById('sel-cast')?.value||'';
+  const uliceFilter=document.getElementById('sel-ulice')?.value||'';
+  const mapList=S.list.filter(sv=>{
+    const sd=sv.sidlo||{};
+    if(castFilter&&sd.nazevCastiObce!==castFilter)return false;
+    if(uliceFilter&&sd.nazevUlice!==uliceFilter)return false;
+    return true;
+  });
+  const todo=mapList.slice(0,80);
+  for(let i=0;i<todo.length;i++){
+    const sv=todo[i];const sd=sv.sidlo||{};
+    const addr=[sd.nazevUlice,sd.cisloDomovni,sd.nazevObce,sd.psc].filter(Boolean).join(' ');
+    try{
+      await slp(120);
+      const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addr+', Česká republika')}&limit=1`,{headers:{'Accept-Language':'cs','User-Agent':'SVJFinder/1.0'}});
+      const rs=await r.json();
+      if(rs&&rs[0]){
+        const lat=+rs[0].lat,lon=+rs[0].lon;
+        const ns=(sv.obchodniJmeno||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const m=L.circleMarker([lat,lon],{radius:8,fillColor:'#2563eb',color:'#1a3fa0',weight:2,fillOpacity:0.85}).addTo(S.map);
+        m.bindPopup(`<div style="font-family:'Outfit',sans-serif;min-width:230px;padding:4px 0"><strong style="font-size:13px">${ns}</strong><br><span style="font-size:11px;color:#8a8278">${esc(addr)}</span><br><span style="font-size:10px;color:#8a8278;font-family:monospace">IČO: ${sv.ico}</span><div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap"><a href="https://mapy.cz/zakladni?q=${encodeURIComponent(addr+' Česká republika')}" target="_blank" style="font-size:11px;color:#2563eb;text-decoration:none;background:#dbeafe;padding:3px 8px;border-radius:4px">🗺 Mapy.cz</a><a href="https://www.google.com/maps/search/${encodeURIComponent(addr+' Česká republika')}" target="_blank" style="font-size:11px;color:#0d7a4e;text-decoration:none;background:#d1fae5;padding:3px 8px;border-radius:4px">📍 Google</a><button onclick="closePops();openDet('${sv.ico}','')" style="font-size:11px;background:#2563eb;color:white;border:none;padding:3px 8px;border-radius:4px;cursor:pointer">Detail</button></div></div>`);
+        S.mrks.push(m);bounds.push([lat,lon]);
+      }
+    }catch(e){}
+    document.getElementById('mst').textContent=`${i+1}/${todo.length} geocódováno…`;
+  }
+  if(bounds.length)S.map.fitBounds(bounds,{padding:[40,40]});
+  document.getElementById('mst').textContent=`✅ ${bounds.length} SVJ na mapě`;
+  btn.disabled=false;
+}
+function closePops(){S.mrks.forEach(m=>m.closePopup());}
+
+async function openDet(ico,nazev){
+  document.getElementById('mt').textContent=nazev||'Detail SVJ';
+  document.getElementById('ms').textContent='IČO: '+ico;
+  document.getElementById('mb').innerHTML='<div class="loading"><div class="spin"></div>Načítám…</div>';
+  document.getElementById('modal').style.display='flex';
+  if(!beOk){
+    await slp(350);
+    const sv=S.list.find(x=>x.ico===ico)||{ico,obchodniJmeno:nazev,stavSubjektu:'AKTIVNI',datumVzniku:'2005-01-01',sidlo:{nazevUlice:'Hlavní',cisloDomovni:1,nazevObce:S.obec,psc:'10000'}};
+    showMod({ico,nazev:sv.obchodniJmeno,stav:sv.stavSubjektu,dt:sv.datumVzniku,adr:sv.sidlo||{},osoby:[{jmeno:'Jan',prijmeni:'Novák',funkce:'Předseda výboru'},{jmeno:'Marie',prijmeni:'Svobodová',funkce:'Člen výboru'},{jmeno:'Petr',prijmeni:'Kratochvíl',funkce:'Člen výboru'}]});
+    return;
+  }
+  try{
+    const r=await fetch(`${API}/svj/${ico}/detail`);
+    if(!r.ok)throw new Error('Chyba '+r.status);
+    const d=await r.json();
+    showMod({ico,nazev:d.nazev,stav:d.stavSubjektu,dt:d.datumVzniku,adr:d.sidlo||{},osoby:d.osoby||[],subjektId:d.subjektId||null,spisovaZnacka:d.spisovaZnacka||null});
+  }catch(e){document.getElementById('mb').innerHTML=emH('⚠️','Chyba',esc(e.message));}
+}
+
+function showMod(d){
+  document.getElementById('mt').textContent=d.nazev||'–';
+  const sd=d.adr||{};
+  const addr=[sd.nazevUlice,sd.cisloDomovni?(String(sd.cisloDomovni)+(sd.cisloOrientacni?'/'+sd.cisloOrientacni:'')):'',sd.nazevObce,sd.psc].filter(Boolean).join(' ');
+  const yr=d.dt?d.dt.slice(0,4):'–';
+  const ok=!d.stav||d.stav==='AKTIVNI'||d.stav===null;
+  let osh='';
+  if(d.osoby&&d.osoby.length>0){
+    osh=`<div class="sec"><div class="sec-t">👥 Výbor / Statutární orgán</div>${d.osoby.map(o=>{const jm=o.jmeno||'–';const ini=jm.split(' ').filter(w=>w.length>1).map(w=>w[0]).slice(0,2).join('').toUpperCase()||'?';const role=o.funkce||o.nazevRole||'člen výboru';const nar=o.datumNarozeni?(' · nar. '+String(o.datumNarozeni).slice(0,10)):'';
+return`<div class="prow"><div class="av">${ini}</div><div><div class="pn">${esc(jm)}</div><div class="pr">${esc(role)}${nar}</div></div></div>`;}).join('')}</div>`;
+  }
+  document.getElementById('mb').innerHTML=`
+  <div class="sec"><div class="sec-t">📋 Základní údaje</div>
+    <div class="igrid">
+      <div class="ii"><div class="il">IČO</div><div class="iv" style="font-family:'JetBrains Mono',monospace">${d.ico}</div></div>
+      <div class="ii"><div class="il">Rok vzniku</div><div class="iv">${yr}</div></div>
+      <div class="ii"><div class="il">Stav</div><div class="iv"><span class="badge ${ok?'b-ok':'b-no'}">${ok?'● Aktivní':'● Neaktivní'}</span></div></div>
+      <div class="ii"><div class="il">Typ</div><div class="iv">${S.type==='bd'?'Bytové družstvo':'SVJ'}</div></div>
+    </div></div>
+  <div class="sec"><div class="sec-t">📍 Adresa a navigace</div>
+    <div class="ii" style="margin-bottom:14px"><div class="il">Sídlo</div><div class="iv">${esc(addr)||'–'}</div></div>
+    <div class="lrow">
+      <a href="https://mapy.cz/zakladni?q=${encodeURIComponent(addr+' Česká republika')}" target="_blank" class="el el-b">🗺 Mapy.cz</a>
+      <a href="https://www.google.com/maps/search/${encodeURIComponent(addr+' Česká republika')}" target="_blank" class="el el-g">📍 Google Maps</a>
+      <a href="https://www.google.com/search?q=${encodeURIComponent((d.nazev||'')+' '+addr)}" target="_blank" class="el el-a">🌐 Web hledání</a>
+    </div></div>
+  ${osh}
+  <div class="sec"><div class="sec-t">🔗 Veřejné zdroje</div>
+    ${d.spisovaZnacka?`<div style="font-size:12px;color:var(--text3);margin-bottom:10px;">Spisová značka: <b style="color:var(--text2)">${esc(d.spisovaZnacka)}</b></div>`:''}
+    <div class="lrow">
+      ${d.subjektId
+        ? `<a href="https://or.justice.cz/ias/ui/rejstrik-firma.vysledky?subjektId=${d.subjektId}&typ=PLATNY" target="_blank" class="el el-b">⚖️ Veřejný rejstřík</a>
+           <a href="https://or.justice.cz/ias/ui/vypis-sl-firma?subjektId=${d.subjektId}" target="_blank" class="el el-c">📋 Sbírka listin</a>
+           <a href="https://or.justice.cz/ias/ui/rejstrik-firma.vysledky?subjektId=${d.subjektId}&typ=PLATNY" target="_blank" class="el el-g">👥 Výbor / Osoby</a>`
+        : `<a href="https://or.justice.cz/ias/ui/rejstrik-$firma?ico=${d.ico}&jenPlatne=PLATNE" target="_blank" class="el el-b">⚖️ Veřejný rejstřík</a>`
+      }
+      <a href="https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/ekonomicke-subjekty/${d.ico}" target="_blank" class="el el-a">📄 ARES</a>
+    </div></div>`;
+}
+function closeMod(){document.getElementById('modal').style.display='none';}
+
+async function doExport(){
+  if(!S.list.length){toast('Nejdříve vygenerujte seznam','err');return;}
+  if(!beOk){
+    const rows=[["IČO",S.type==='bd'?"Název BD":"Název SVJ","Ulice","ČP","Obec","PSČ","Rok vzniku","Stav"]];
+    S.list.forEach(sv=>{const sd=sv.sidlo||{};rows.push([sv.ico,sv.obchodniJmeno||'',sd.nazevUlice||'',sd.cisloDomovni||'',sd.nazevObce||'',sd.psc||'',sv.datumVzniku?sv.datumVzniku.slice(0,4):'',sv.stavSubjektu==='AKTIVNI'?'Aktivní':'Neaktivní']);});
+    const csv=rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n');
+    const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download=`${S.type==='bd'?'BD':'SVJ'}_${S.obec.replace(/ /g,'_')}.csv`;a.click();
+    URL.revokeObjectURL(url);
+    toast('CSV exportováno (backend nedostupný pro .xlsx)','info');return;
+  }
+  toast('Připravuji Excel…','info');
+  const p=new URLSearchParams({obec:S.obec});
+  const uliceVal=document.getElementById('sel-ulice')?.value||'';
+  if(uliceVal)p.set('ulice',uliceVal);
+  try{
+    const r=await fetch(`${API}/export/excel?${p}`);
+    if(!r.ok)throw new Error('Export selhal');
+    const blob=await r.blob();
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download=`${S.type==='bd'?'BD':'SVJ'}_${S.obec.replace(/ /g,'_')}.xlsx`;a.click();
+    URL.revokeObjectURL(url);toast('Excel exportován!','ok');
+  }catch(e){toast('Chyba: '+e.message,'err');}
+}
+
+function emH(i,t,d){return`<div class="empty"><div class="empty-ico">${i}</div><div class="empty-ttl">${t}</div><div class="empty-dsc">${d}</div></div>`;}
+function toast(msg,type){const c=document.getElementById('toasts');const t=document.createElement('div');const icons={ok:'✅',err:'❌',info:'ℹ️'};t.className=`toast t-${type==='ok'?'ok':type==='err'?'err':'info'}`;t.innerHTML=`<span>${icons[type]||'ℹ️'}</span>${esc(msg)}`;c.appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='opacity 0.3s';setTimeout(()=>t.remove(),300);},3500);}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function slp(ms){return new Promise(r=>setTimeout(r,ms));}
+
+async function preloadFilters(obec){
+  if(!beOk||!obec)return;
+  try{
+    // Load části obce
+    const rc=await fetch(`${API}/casti?obec=${encodeURIComponent(obec)}&typ=${S.type}`);
+    const casti=await rc.json();
+    const selCast=document.getElementById('sel-cast');
+    selCast.innerHTML='<option value="">— Celá obec —</option>';
+    casti.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c;selCast.appendChild(o);});
+    selCast.disabled=casti.length===0;
+
+    // Load ulice for whole obec
+    await loadUlice(obec,'');
+  }catch(e){}
+}
+
+async function loadUlice(obec,cast){
+  if(!beOk)return;
+  try{
+    let url=`${API}/ulice?obec=${encodeURIComponent(obec)}&typ=${S.type}`;
+    if(cast)url+=`&cast_obce=${encodeURIComponent(cast)}`;
+    const ru=await fetch(url);
+    const ulice=await ru.json();
+    const selUlice=document.getElementById('sel-ulice');
+    selUlice.innerHTML='<option value="">— Všechny ulice —</option>';
+    ulice.forEach(u=>{const o=document.createElement('option');o.value=u;o.textContent=u;selUlice.appendChild(o);});
+    selUlice.disabled=ulice.length===0;
+  }catch(e){}
+}
+
+async function onCastChange(){
+  const obec=document.getElementById('inp').value.trim();
+  const cast=document.getElementById('sel-cast').value;
+  await loadUlice(obec,cast);
+  if(S.list.length)renderT();
+}
+
+function onUliceChange(){
+  if(S.list.length)renderT();
+}
+
+function populateFilters(list){
+  // Část obce
+  const casti=new Set();
+  const ulice=new Set();
+  list.forEach(sv=>{
+    const sd=sv.sidlo||{};
+    if(sd.nazevCastiObce&&sd.nazevCastiObce!==sd.nazevObce)casti.add(sd.nazevCastiObce);
+    if(sd.nazevUlice)ulice.add(sd.nazevUlice);
+  });
+  const selCast=document.getElementById('sel-cast');
+  selCast.innerHTML='<option value="">— Celá obec —</option>';
+  [...casti].sort().forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c;selCast.appendChild(o);});
+  selCast.disabled=casti.size===0;
+  
+  const selUlice=document.getElementById('sel-ulice');
+  selUlice.innerHTML='<option value="">— Všechny ulice —</option>';
+  [...ulice].sort().forEach(u=>{const o=document.createElement('option');o.value=u;o.textContent=u;selUlice.appendChild(o);});
+  selUlice.disabled=ulice.size===0;
+}
+
+function onCastChange(){
+  const cast=document.getElementById('sel-cast').value;
+  const selUlice=document.getElementById('sel-ulice');
+  // Filter streets by selected část
+  const ulice=new Set();
+  S.list.forEach(sv=>{
+    const sd=sv.sidlo||{};
+    if(!cast||(sd.nazevCastiObce===cast))
+      if(sd.nazevUlice)ulice.add(sd.nazevUlice);
+  });
+  selUlice.innerHTML='<option value="">— Všechny ulice —</option>';
+  [...ulice].sort().forEach(u=>{const o=document.createElement('option');o.value=u;o.textContent=u;selUlice.appendChild(o);});
+  selUlice.disabled=ulice.size===0;
+  renderT();
+}
+
+// ── Sbírka listin ──
+async function openSbirka(ico){
+  // Justice.cz doesn't allow CORS - use ARES to get subjektId
+  try{
+    const r=await fetch(`https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/ekonomicke-subjekty/${ico}`,{signal:AbortSignal.timeout(8000)});
+    if(r.ok){
+      const d=await r.json();
+      // ARES returns dalsiUdaje with links or we use ICO to get OR entry
+      // Try getting it from verejnyRejstrik links
+      const links=d?.dalsiUdaje?.verejnyRejstrik;
+      if(links&&links.length){
+        // Extract subjektId from the justice URL in ARES data
+        const url=links[0]?.odkaz||'';
+        const m=url.match(/subjektId=(\d+)/);
+        if(m){window.open(`https://or.justice.cz/ias/ui/vypis-sl-firma?subjektId=${m[1]}`,'_blank');return;}
+      }
+    }
+  }catch(e){}
+  // Fallback: justice search pre-filled with ICO
+  window.open(`https://or.justice.cz/ias/ui/rejstrik-$firma?ico=${ico}&jenPlatne=PLATNE&typHledani=STARTS_WITH`,'_blank');
+}
+
+// ── DB Stats & Sync ──
+async function loadStats(){
+  try{
+    const r=await fetch(API+'/sync/status',{signal:AbortSignal.timeout(2000)});
+    if(!r.ok)return;
+    const d=await r.json();
+    document.getElementById('stat-svj').textContent=d.svj?.toLocaleString('cs-CZ')||'?';
+    document.getElementById('stat-bd').textContent=d.bd?.toLocaleString('cs-CZ')||'?';
+  }catch(e){}
+}
+
+let syncPoll=null;
+async function startSync(){
+  if(!beOk){toast('Backend není dostupný','err');return;}
+  if(!confirm('Spustit aktualizaci databáze z ARES?\nPotrvá 2–4 hodiny (79 000 SVJ).\nAplikace bude fungovat i během syncu.'))return;
+  const btn=document.getElementById('btn-sync');
+  btn.disabled=true;btn.textContent='⏳ Sync běží…';
+  try{
+    const r=await fetch(API+'/sync/start',{method:'POST'});
+    const d=await r.json();
+    if(!d.ok){toast(d.msg,'err');btn.disabled=false;btn.innerHTML='🔄 Sync DB';return;}
+    toast('Sync spuštěn — trvá 2–4 hodiny','info');
+    showSyncBar();
+    syncPoll=setInterval(async()=>{
+      try{
+        const r2=await fetch(API+'/sync/status');
+        const s=await r2.json();
+        updateSyncBar(s);
+        if(s.done){
+          clearInterval(syncPoll);
+          btn.disabled=false;btn.innerHTML='🔄 Sync DB';
+          hideSyncBar();
+          toast('✅ Sync dokončen! Databáze aktualizována.','ok');
+          loadStats();
+        }
+        if(s.error){
+          clearInterval(syncPoll);
+          btn.disabled=false;btn.innerHTML='🔄 Sync DB';
+          hideSyncBar();
+          toast('Chyba syncu: '+s.error,'err');
+        }
+      }catch(e){}
+    },2000);
+  }catch(e){toast('Chyba: '+e.message,'err');btn.disabled=false;btn.innerHTML='🔄 Sync DB';}
+}
+
+function showSyncBar(){
+  let el=document.getElementById('sync-overlay');
+  if(el){el.style.display='flex';return;}
+  el=document.createElement('div');
+  el.id='sync-overlay';
+  el.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--bg2);border:1.5px solid var(--border);border-radius:16px;padding:20px 28px;min-width:420px;max-width:90vw;box-shadow:var(--shadow-lg);z-index:8000;display:flex;flex-direction:column;gap:10px;';
+  el.innerHTML=`
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <span style="font-weight:700;font-size:14px;display:flex;align-items:center;gap:8px;"><span style="animation:spin 1s linear infinite;display:inline-block">⟳</span> Synchronizace ARES</span>
+      <span id="sp-pct" style="font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;color:var(--accent2);">0.0%</span>
+    </div>
+    <div style="background:var(--bg3);border-radius:100px;height:10px;overflow:hidden;">
+      <div id="sp-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#1a56a0,#60a5fa);border-radius:100px;transition:width 0.6s ease;"></div>
+    </div>
+    <div id="sp-msg" style="font-size:12px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:'JetBrains Mono',monospace;">Inicializuji...</div>
+    <div id="sp-eta" style="font-size:12px;color:var(--text3);">⏱ Odhadovaná celková doba: 2–4 hodiny</div>`;
+  document.body.appendChild(el);
+}
+
+function updateSyncBar(s){
+  const pct=Math.min(100, s.pct||0);
+  const bar=document.getElementById('sp-bar');
+  const pctEl=document.getElementById('sp-pct');
+  const msg=document.getElementById('sp-msg');
+  const eta=document.getElementById('sp-eta');
+  if(bar) bar.style.width=pct+'%';
+  if(pctEl) pctEl.textContent=pct.toFixed(1)+'%';
+  if(msg && s.progress){
+    const clean=s.progress.replace(/[\r\n]/g,' ').trim();
+    msg.textContent=clean||'Probíhá...';
+  }
+  if(eta && s.eta) eta.textContent='⏱ Zbývá přibližně: '+s.eta;
+}
+
+function hideSyncBar(){
+  const el=document.getElementById('sync-overlay');
+  if(el) el.style.display='none';
+}
+
+// Load stats on start
+setTimeout(()=>{if(beOk)loadStats();},1000);
+</script>
+</body>
+</html>
