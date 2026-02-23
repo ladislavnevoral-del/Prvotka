@@ -15,8 +15,10 @@ def get_db():
             status_code=503,
             detail="Databáze nenalezena. Nahraj ji přes /api/upload-db."
         )
+
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    conn.text_factory = lambda b: b.decode("utf-8", errors="replace")  # 👈 DŮLEŽITÉ
     return conn
 from typing import Optional
 from openpyxl import Workbook
