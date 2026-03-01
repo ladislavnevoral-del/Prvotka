@@ -1,5 +1,5 @@
 """
-Prvotkář 3.0 – Kompletní sync SVJ a BD z ARES
+Prvotkář 3.1 – Kompletní sync SVJ a BD z ARES
 Strategie: RUIAN API -> všechny obce ČR -> ARES kodObce filtr
 Pokryje všech ~79 873 SVJ a ~8 400 BD
 """
@@ -57,6 +57,13 @@ def ares_post(payload, retries=3):
             if e.code == 429:
                 print("\n  Rate limit ARES, čekám 30s...")
                 time.sleep(30)
+            elif e.code == 400:
+                # ARES vrací HTTP 400 s JSON body "VYSTUP_PRILIS_MNOHO_VYSLEDKU"
+                # – musíme přečíst body i z chybové odpovědi
+                try:
+                    return json.loads(e.read())
+                except Exception:
+                    return None
             else:
                 return None
         except Exception:
@@ -183,21 +190,28 @@ def sync_obec(conn, typ, kod_pf, kod_obce, nazev_obce):
         time.sleep(0.2)
     return celkem
 
-def sync_obec_po_pismenech(conn, typ, kod_pf, kod_obce):
-    """Fallback pro velká města (Praha, Brno…) – kombinuje kodObce + prefix."""
+def sync_obec_po_pismenech(conn, typ, kod_pf, kod_obce, prefix="", depth=0):
+    """Fallback pro velká města (Praha, Brno…) – kombinuje kodObce + prefix.
+    Rekurzivně jde hlouběji pokud prefix stále vrací příliš mnoho výsledků (max 5 znaků)."""
     celkem = 0
     znaky  = "ABCČDĎEÉĚFGHIÍJKLMNŇOÓPQRŘSŠTŤUÚŮVWXYÝZŽ0123456789"
     for z in znaky:
+        current = prefix + z
         start = 0
         while True:
             d = ares_post({
-                "obchodniJmeno": z,
+                "obchodniJmeno": current,
                 "pravniForma":   [kod_pf],
                 "sidlo":         {"kodObce": kod_obce},
                 "start":         start,
                 "pocet":         1000
             })
-            if not d or d.get("subKod") == "VYSTUP_PRILIS_MNOHO_VYSLEDKU":
+            if not d:
+                break
+            if d.get("subKod") == "VYSTUP_PRILIS_MNOHO_VYSLEDKU":
+                # Prefix stále příliš velký – jdi hlouběji (max 5 znaků)
+                if depth < 4:
+                    celkem += sync_obec_po_pismenech(conn, typ, kod_pf, kod_obce, current, depth + 1)
                 break
             subjekty = d.get("ekonomickeSubjekty", [])
             if not subjekty:
@@ -266,19 +280,6 @@ def main():
     print(f"Celkem:    {svj_db+bd_db:,}")
     print("=" * 60)
     conn.close()
-
-    # Fáze 4: Geokódování nových adres
-    print("\n" + "=" * 60)
-    print("Fáze 4: Spouštím geokódování nových adres...")
-    print("(lze přerušit Ctrl+C, pokračuje při příštím spuštění)")
-    print("=" * 60)
-    try:
-        import geocode as _geo
-        _geo.main()
-    except KeyboardInterrupt:
-        print("\nGeokódování přerušeno – dokončíš při příštím syncu.")
-    except Exception as e:
-        print(f"\nChyba geokódování: {e}")
 
 if __name__ == "__main__":
     main()
