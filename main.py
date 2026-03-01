@@ -3,8 +3,10 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from fastapi import UploadFile, File
 import sqlite3
 import io
+import shutil
 import os
 import httpx
 from typing import Optional
@@ -533,3 +535,18 @@ async def _run_sync():
         _sync_status = {"running": False, "progress": "", "done": False, "error": str(e)}
     finally:
         _sync_running = False
+@app.post("/api/upload-db")
+async def upload_db(file: UploadFile = File(...)):
+    DB_PATH = "/data/prvotkar.db"
+
+    # vytvoří složku /data pokud neexistuje
+    os.makedirs("/data", exist_ok=True)
+
+    with open(DB_PATH, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    return {
+        "ok": True,
+        "msg": "Databáze uložena do /data/prvotkar.db",
+        "size": os.path.getsize(DB_PATH)
+    }
