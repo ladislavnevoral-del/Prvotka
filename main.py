@@ -13,11 +13,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 import uvicorn
 
-app = FastAPI(title="Prvotkář 3.1 API")
-
-@app.get("/api/version")
-def version():
-    return {"version": "3.1", "ok": True}
+app = FastAPI(title="Prvotkář 3.0 API")
 
 @app.get("/")
 async def root():
@@ -65,8 +61,8 @@ async def get_svj(
     conn = get_db()
     try:
         # Hledej přesnou shodu i části (např. "Brno" najde i "Brno-Židenice")
-        params = [obec, obec + "-%", typ]
-        filters = "(obec = ? OR obec LIKE ?) AND typ = ?"
+        params = [obec, obec + "-%", obec + " %", typ]
+        filters = "(obec = ? OR obec LIKE ? OR obec LIKE ?) AND typ = ?"
         if cast_obce:
             filters += " AND cast_obce = ?"
             params.append(cast_obce)
@@ -83,15 +79,11 @@ async def get_svj(
         subjekty = []
         for r in page:
             d = row_to_dict(r)
-            lat = d.get("lat") or None
-            lng = d.get("lng") or None
             subjekty.append({
                 "ico": d["ico"],
                 "obchodniJmeno": d["nazev"],
                 "stavSubjektu": d["stav"],
                 "datumVzniku": d["datum_vzniku"],
-                "lat": lat if lat and lat != 0.0 else None,
-                "lng": lng if lng and lng != 0.0 else None,
                 "sidlo": {
                     "nazevObce": d["obec"],
                     "nazevCastiObce": d["cast_obce"],
@@ -137,120 +129,6 @@ async def get_stats():
             "celkem": total, "svj": svj, "bd": bd,
             "obce": obce, "posledni_sync": updated
         }
-    finally:
-        conn.close()
-
-@app.get("/api/hledat")
-async def hledat(
-    q: str = Query(..., min_length=2),
-    typ: Optional[str] = None,
-    limit: int = 50,
-):
-    """Fulltext hledání napříč celou ČR podle názvu SVJ/BD"""
-    conn = get_db()
-    try:
-        sql    = "SELECT * FROM subjekty WHERE nazev LIKE ?"
-        params = [f"%{q}%"]
-        if typ:
-            sql += " AND typ = ?"
-            params.append(typ)
-        sql += " ORDER BY nazev LIMIT ?"
-        params.append(limit)
-        rows = conn.execute(sql, params).fetchall()
-        result = []
-        for r in rows:
-            d = row_to_dict(r)
-            lat = d.get("lat") or None
-            lng = d.get("lng") or None
-            result.append({
-                "ico":           d["ico"],
-                "obchodniJmeno": d["nazev"],
-                "stavSubjektu":  d["stav"],
-                "datumVzniku":   d["datum_vzniku"],
-                "lat": lat if lat and lat != 0.0 else None,
-                "lng": lng if lng and lng != 0.0 else None,
-                "sidlo": {
-                    "nazevObce":       d["obec"],
-                    "nazevCastiObce":  d["cast_obce"],
-                    "nazevUlice":      d["ulice"],
-                    "cisloDomovni":    d["cislo_popisne"],
-                    "cisloOrientacni": d["cislo_orientacni"],
-                    "psc":             d["psc"],
-                    "nazevKraje":      d["kraj"],
-                }
-            })
-        return {"celkem": len(result), "subjekty": result}
-    finally:
-        conn.close()
-
-@app.get("/api/okoli")
-async def get_okoli(
-    lat: float = Query(...),
-    lng: float = Query(...),
-    radius: float = Query(1.0),   # km
-    typ: Optional[str] = None,
-):
-    """Vrátí SVJ/BD v okolí GPS souřadnic (radius v km)"""
-    conn = get_db()
-    try:
-        # Haversine aproximace přes bounding box (rychlé, bez funkce v SQLite)
-        # 1 stupeň lat ≈ 111 km, 1 stupeň lng ≈ 71 km (pro CZ)
-        dlat = radius / 111.0
-        dlng = radius / 71.0
-        sql    = """SELECT *, 
-                    ((lat - ?) * (lat - ?) * 12321 + (lng - ?) * (lng - ?) * 5041) AS dist2
-                    FROM subjekty
-                    WHERE lat IS NOT NULL AND lat != 0
-                      AND lat BETWEEN ? AND ?
-                      AND lng BETWEEN ? AND ?"""
-        params = [lat, lat, lng, lng,
-                  lat - dlat, lat + dlat,
-                  lng - dlng, lng + dlng]
-        if typ:
-            sql += " AND typ = ?"
-            params.append(typ)
-        sql += " ORDER BY dist2 LIMIT 200"
-        rows = conn.execute(sql, params).fetchall()
-
-        # Přesný filtr přes Haversine
-        import math
-        def haversine(lat1, lng1, lat2, lng2):
-            R    = 6371
-            dlat = math.radians(lat2 - lat1)
-            dlng = math.radians(lng2 - lng1)
-            a    = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlng/2)**2
-            return R * 2 * math.asin(math.sqrt(a))
-
-        result = []
-        for r in rows:
-            d    = row_to_dict(r)
-            rlat = d.get("lat")
-            rlng = d.get("lng")
-            if not rlat or not rlng:
-                continue
-            dist = haversine(lat, lng, rlat, rlng)
-            if dist <= radius:
-                result.append({
-                    "ico":           d["ico"],
-                    "obchodniJmeno": d["nazev"],
-                    "stavSubjektu":  d["stav"],
-                    "datumVzniku":   d["datum_vzniku"],
-                    "lat":           rlat,
-                    "lng":           rlng,
-                    "vzdalenost":    round(dist * 1000),  # v metrech
-                    "sidlo": {
-                        "nazevObce":       d["obec"],
-                        "nazevCastiObce":  d["cast_obce"],
-                        "nazevUlice":      d["ulice"],
-                        "cisloDomovni":    d["cislo_popisne"],
-                        "cisloOrientacni": d["cislo_orientacni"],
-                        "psc":             d["psc"],
-                        "nazevKraje":      d["kraj"],
-                    }
-                })
-
-        result.sort(key=lambda x: x["vzdalenost"])
-        return {"celkem": len(result), "subjekty": result}
     finally:
         conn.close()
 
@@ -572,8 +450,8 @@ async def get_casti(obec: str = Query(...), typ: Optional[str] = None):
     """Vrátí unikátní části obce pro danou obec"""
     conn = get_db()
     try:
-        q = "SELECT DISTINCT cast_obce FROM subjekty WHERE (obec = ? OR obec LIKE ?) AND cast_obce IS NOT NULL AND cast_obce != obec"
-        params = [obec, obec + "-%"]
+        q = "SELECT DISTINCT cast_obce FROM subjekty WHERE (obec = ? OR obec LIKE ? OR obec LIKE ?) AND cast_obce IS NOT NULL AND cast_obce != obec"
+        params = [obec, obec + "-%", obec + " %"]
         if typ:
             q += " AND typ = ?"
             params.append(typ)
@@ -588,8 +466,8 @@ async def get_ulice(obec: str = Query(...), cast_obce: Optional[str] = None, typ
     """Vrátí unikátní ulice pro danou obec/část"""
     conn = get_db()
     try:
-        q = "SELECT DISTINCT ulice FROM subjekty WHERE (obec = ? OR obec LIKE ?) AND ulice IS NOT NULL"
-        params = [obec, obec + "-%"]
+        q = "SELECT DISTINCT ulice FROM subjekty WHERE (obec = ? OR obec LIKE ? OR obec LIKE ?) AND ulice IS NOT NULL"
+        params = [obec, obec + "-%", obec + " %"]
         if cast_obce:
             q += " AND cast_obce = ?"
             params.append(cast_obce)
@@ -641,7 +519,6 @@ async def _run_sync():
             stderr=_asyncio.subprocess.STDOUT,
             cwd=os.path.dirname(os.path.abspath(__file__))
         )
-        import re as _re
         last = ""
         while True:
             line = await proc.stdout.readline()
@@ -650,14 +527,8 @@ async def _run_sync():
             last = line.decode("utf-8", errors="replace").strip()
             if last:
                 _sync_status["progress"] = last
-                m = _re.search(r"\[(\s*\d+\.?\d*)%\]", last)
-                if m:
-                    _sync_status["pct"] = float(m.group(1).strip())
-                m2 = _re.search(r"~([\dhms ]+)zbyvá", last)
-                if m2:
-                    _sync_status["eta"] = m2.group(1).strip()
         await proc.wait()
-        _sync_status.update({"running": False, "done": True, "progress": "Sync dokončen ✅", "pct": 100, "eta": ""})
+        _sync_status = {"running": False, "progress": last, "done": True, "error": ""}
     except Exception as e:
         _sync_status = {"running": False, "progress": "", "done": False, "error": str(e)}
     finally:
