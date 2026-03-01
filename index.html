@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Prvotkář 3.1</title>
+<title>Prvotkář 3.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -36,24 +36,6 @@
   --shadow-lg:0 4px 24px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.06);
 }
 *{margin:0;padding:0;box-sizing:border-box;}
-.ft-wrap{position:relative;display:flex;align-items:center;}
-.ft-inp{padding:8px 14px 8px 36px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;font-family:'Outfit',sans-serif;background:var(--bg3);color:var(--text);width:220px;transition:all 0.2s;}
-.ft-inp:focus{outline:none;border-color:var(--accent2);background:var(--bg2);width:280px;box-shadow:0 0 0 3px var(--accent-glow);}
-.ft-ico{position:absolute;left:10px;color:var(--text3);font-size:14px;pointer-events:none;}
-.ft-drop{position:absolute;top:calc(100% + 6px);left:0;right:0;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-lg);z-index:500;max-height:360px;overflow-y:auto;display:none;}
-.ft-drop.open{display:block;}
-.ft-item{padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--bg3);font-size:13px;}
-.ft-item:hover{background:var(--bg3);}
-.ft-item-name{font-weight:600;color:var(--text);}
-.ft-item-sub{font-size:11px;color:var(--text3);margin-top:2px;}
-.btn-okoli{display:flex;align-items:center;gap:6px;padding:8px 14px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);font-size:13px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;transition:all 0.18s;white-space:nowrap;}
-.btn-okoli:hover{background:var(--accent2);transform:translateY(-1px);}
-.btn-okoli:disabled{opacity:0.5;cursor:not-allowed;transform:none;}
-.okoli-bar{display:none;align-items:center;gap:10px;padding:10px 20px;background:var(--accent-lt);border-bottom:1px solid var(--border);font-size:13px;}
-.okoli-bar.visible{display:flex;}
-.okoli-sel{display:flex;gap:6px;}
-.okoli-opt{padding:5px 12px;border:1px solid var(--border);border-radius:100px;font-size:12px;font-weight:600;cursor:pointer;background:var(--bg2);color:var(--text2);transition:all 0.15s;}
-.okoli-opt.active{background:var(--accent);color:#fff;border-color:var(--accent);}
 body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
 .app{display:flex;flex-direction:column;min-height:100vh;}
 header{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 28px;height:64px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200;box-shadow:0 1px 0 var(--border),0 2px 8px rgba(0,0,0,0.04);}
@@ -82,8 +64,8 @@ main{flex:1;padding:28px;max-width:1440px;margin:0 auto;width:100%;}
 .search-head{display:flex;align-items:center;gap:10px;margin-bottom:20px;}
 .search-icon{width:32px;height:32px;background:var(--accent-lt);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:15px;}
 .search-head h2{font-size:14px;font-weight:600;color:var(--text2);}
-.sgrid{display:grid;grid-template-columns:2fr 1.4fr 1.4fr 1.8fr auto;gap:14px;align-items:end;}
-@media(max-width:1000px){.sgrid{grid-template-columns:1fr 1fr;}.sgrid .btn-go{grid-column:1/-1;justify-content:center;}}
+.sgrid{display:grid;grid-template-columns:2fr 1.2fr 1.2fr 1.2fr auto;gap:14px;align-items:end;}
+@media(max-width:1100px){.sgrid{grid-template-columns:1fr 1fr 1fr;}.sgrid>div:last-child{grid-column:1/-1;flex-direction:row;justify-content:flex-end;gap:8px;}}
 @media(max-width:580px){.sgrid{grid-template-columns:1fr;}}
 .field{display:flex;flex-direction:column;gap:5px;}
 .field label{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.8px;}
@@ -197,23 +179,14 @@ tbody td{padding:12px 16px;font-size:13px;vertical-align:middle;}
 <header>
   <div class="logo">
     <div class="logo-mark">🔑</div>
-    <div>Prvotkář 3.1<span class="logo-sub">SVJ &amp; BD vyhledávač</span></div>
+    <div>Prvotkář 3.0<span class="logo-sub">SVJ &amp; BD vyhledávač</span></div>
   </div>
   <div class="header-right">
-    <div class="ft-wrap" id="ft-wrap">
-      <span class="ft-ico">🔍</span>
-      <input class="ft-inp" id="ft-inp" type="text" placeholder="Hledat SVJ/BD v celé ČR…" autocomplete="off"
-             oninput="ftSearch(this.value)" onkeydown="ftKey(event)" onfocus="ftOpen()" onblur="setTimeout(ftClose,200)"/>
-      <div class="ft-drop" id="ft-drop"></div>
-    </div>
-    <button class="btn-okoli" id="btn-okoli" onclick="startOkoli()" title="Najít SVJ/BD v okolí vaší polohy">
-      📍 V mém okolí
-    </button>
     <div class="type-toggle" id="type-toggle">
       <button class="type-btn active-svj" id="btn-svj" onclick="setType('svj')">🏢 SVJ</button>
       <button class="type-btn" id="btn-bd" onclick="setType('bd')">🏘 Bytové družstvo</button>
     </div>
-    <span class="vtag">v3.1</span>
+    <span class="vtag">v1.0</span>
     <div id="db-stats" style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text3);">
       <span style="background:var(--bg3);border:1px solid var(--border);padding:3px 10px;border-radius:100px;">
         SVJ: <b id="stat-svj" style="color:var(--accent2);">…</b>
@@ -234,6 +207,7 @@ tbody td{padding:12px 16px;font-size:13px;vertical-align:middle;}
     </div>
   </div>
 </header>
+
 
 <main>
   <div class="search-panel">
@@ -260,9 +234,19 @@ tbody td{padding:12px 16px;font-size:13px;vertical-align:middle;}
           <option value="">— Všechny ulice —</option>
         </select>
       </div>
-      <button class="btn-go" id="btn-go" onclick="doSearch()">
-        <span id="go-ico">⚡</span> <span id="go-label">Vygeneruj SVJ</span>
-      </button>
+      <div class="field">
+        <label>Hledat v seznamu</label>
+        <input id="ft-local" type="text" placeholder="Jméno, IČO, ulice…" autocomplete="off"
+          oninput="ftLocal(this.value)"/>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;justify-content:flex-end">
+        <button class="btn-go" id="btn-go" onclick="doSearch()" style="flex:1">
+          <span id="go-ico">⚡</span> <span id="go-label">Vygeneruj SVJ</span>
+        </button>
+        <button class="btn-okoli" id="btn-okoli" onclick="startOkoli()" title="Najít SVJ/BD v okolí vaší polohy" style="height:36px;font-size:12px;padding:6px 14px;justify-content:center">
+          📍 V mém okolí
+        </button>
+      </div>
     </div>
   </div>
 
@@ -447,6 +431,10 @@ function renderT(){
     const sd=sv.sidlo||{};
     if(castFilter&&sd.nazevCastiObce!==castFilter)return false;
     if(uliceFilter&&sd.nazevUlice!==uliceFilter)return false;
+    if(_ftLocal){
+      const hay=(sv.obchodniJmeno||'').toLowerCase()+(sv.ico||'')+(sd.nazevUlice||'').toLowerCase()+(sd.nazevObce||'').toLowerCase();
+      if(!hay.includes(_ftLocal))return false;
+    }
     return true;
   });
   const start=(S.page-1)*S.ps;
@@ -506,7 +494,7 @@ function srt(col){if(S.sc===col)S.sd=S.sd==='asc'?'desc':'asc';else{S.sc=col;S.s
 
 function initMap(){S.map=L.map('map',{center:[49.8,15.5],zoom:7});L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:19}).addTo(S.map);S.mok=true;}
 
-async function doGeocode(){
+async function doGeocode(isOkoli){
   if(!S.mok)initMap();
   if(!S.list.length){toast('Nejdříve vygenerujte seznam','err');return;}
   showTab('map');
@@ -523,7 +511,7 @@ async function doGeocode(){
     if(uliceFilter&&sd.nazevUlice!==uliceFilter)return false;
     return true;
   });
-  const todo=mapList.slice(0,80);
+  const todo=mapList.slice(0,isOkoli?20:80);
   for(let i=0;i<todo.length;i++){
     const sv=todo[i];const sd=sv.sidlo||{};
     const addr=[sd.nazevUlice,sd.cisloDomovni,sd.nazevObce,sd.psc].filter(Boolean).join(' ');
@@ -541,7 +529,13 @@ async function doGeocode(){
     }catch(e){}
     document.getElementById('mst').textContent=`${i+1}/${todo.length} geocódováno…`;
   }
-  if(bounds.length)S.map.fitBounds(bounds,{padding:[40,40]});
+  if(bounds.length){
+    S.map.fitBounds(bounds,{padding:[40,40]});
+    if(isOkoli&&_userLat){
+      const userIcon=L.divIcon({html:'<div style="width:18px;height:18px;background:#f97316;border:3px solid white;border-radius:50%;box-shadow:0 0 0 3px rgba(249,115,22,0.3)"></div>',iconSize:[18,18],iconAnchor:[9,9],className:''});
+      L.marker([_userLat,_userLng],{icon:userIcon}).addTo(S.map).bindPopup('<b>Vaše poloha</b>');
+    }
+  }
   document.getElementById('mst').textContent=`✅ ${bounds.length} SVJ na mapě`;
   btn.disabled=false;
 }
@@ -825,113 +819,51 @@ function hideSyncBar(){
 // Load stats on start
 setTimeout(()=>{if(beOk)loadStats();},1000);
 
-// ── Fulltext vyhledávání ──
-let ftTimer=null, ftIdx=-1, ftResults=[];
-function ftSearch(val){
-  clearTimeout(ftTimer);
-  if(val.length<2){ftClose();return;}
-  ftTimer=setTimeout(async()=>{
-    try{
-      const typ=S.type||'svj';
-      const r=await fetch(`${API}/hledat?q=${encodeURIComponent(val)}&typ=${typ}&limit=30`);
-      const d=await r.json();
-      ftResults=d.subjekty||[];
-      const drop=document.getElementById('ft-drop');
-      if(!ftResults.length){drop.innerHTML='<div class="ft-item" style="color:var(--text3)">Nic nenalezeno</div>';drop.classList.add('open');return;}
-      drop.innerHTML=ftResults.map((s,i)=>{
-        const sd=s.sidlo||{};
-        const addr=[sd.nazevUlice,sd.cisloDomovni,sd.nazevObce].filter(Boolean).join(' ');
-        return`<div class="ft-item" data-i="${i}" onmousedown="ftPick(${i})">
-          <div class="ft-item-name">${esc(s.obchodniJmeno||'')}</div>
-          <div class="ft-item-sub">${esc(addr)} · IČO ${s.ico}</div>
-        </div>`;
-      }).join('');
-      drop.classList.add('open');
-      ftIdx=-1;
-    }catch(e){}
-  },300);
+// ── Fulltext lokální filtr ──
+let _ftLocal='';
+function ftLocal(val){
+  _ftLocal=val.toLowerCase().trim();
+  S.page=1;
+  if(S.list.length)renderT();
 }
-function ftPick(i){
-  const s=ftResults[i];
-  if(!s)return;
-  document.getElementById('ft-inp').value='';
-  ftClose();
-  openModal(s.ico);
-}
-function ftKey(e){
-  const items=document.querySelectorAll('#ft-drop .ft-item');
-  if(e.key==='ArrowDown'){ftIdx=Math.min(ftIdx+1,items.length-1);ftHi(items);}
-  else if(e.key==='ArrowUp'){ftIdx=Math.max(ftIdx-1,0);ftHi(items);}
-  else if(e.key==='Enter'&&ftIdx>=0){ftPick(ftIdx);}
-  else if(e.key==='Escape'){ftClose();}
-}
-function ftHi(items){items.forEach((el,i)=>el.style.background=i===ftIdx?'var(--bg3)':'');}
-function ftOpen(){if(ftResults.length)document.getElementById('ft-drop').classList.add('open');}
-function ftClose(){document.getElementById('ft-drop').classList.remove('open');}
 
-// ── Okolí ──
-let _okoliLat=null,_okoliLng=null,_okoliRadius=0.2;
+// ── Domy v okolí v1.3: reverse geocoding → obec → vyhledání → geocode 20 nejbližších ──
+let _userLat=null,_userLng=null;
+
 async function startOkoli(){
   const btn=document.getElementById('btn-okoli');
-  btn.disabled=true;btn.textContent='📍 Zjišťuji polohu…';
-  if(!navigator.geolocation){toast('Prohlížeč nepodporuje geolokaci','err');btn.disabled=false;btn.textContent='📍 V mém okolí';return;}
-  navigator.geolocation.getCurrentPosition(
-    async pos=>{
-      _okoliLat=pos.coords.latitude;
-      _okoliLng=pos.coords.longitude;
-      btn.disabled=false;btn.textContent='📍 V mém okolí';
-      document.getElementById('okoli-bar').classList.add('visible');
-      await loadOkoli();
-    },
-    err=>{
-      btn.disabled=false;btn.textContent='📍 V mém okolí';
-      toast('Poloha nedostupná: '+err.message,'err');
-    },
-    {enableHighAccuracy:true,timeout:10000}
-  );
+  btn.disabled=true;btn.innerHTML='⏳ Poloha…';
+  if(!navigator.geolocation){
+    toast('Prohlížeč nepodporuje geolokaci','err');
+    btn.disabled=false;btn.innerHTML='📍 V mém okolí';return;
+  }
+  navigator.geolocation.getCurrentPosition(async pos=>{
+    _userLat=pos.coords.latitude;
+    _userLng=pos.coords.longitude;
+    btn.disabled=false;btn.innerHTML='📍 V mém okolí';
+    toast('Poloha zjištěna, hledám obec…','info');
+    try{
+      const r=await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${_userLat}&lon=${_userLng}&zoom=14&addressdetails=1`,
+        {headers:{'User-Agent':'Prvotkar/1.3'}}
+      );
+      const geo=await r.json();
+      const addr=geo.address||{};
+      const obec=addr.city||addr.town||addr.village||addr.municipality||addr.county||'';
+      if(!obec){toast('Nepodařilo se zjistit obec z polohy','err');return;}
+      document.getElementById('inp').value=obec;
+      toast(`Obec: ${obec} — načítám SVJ…`,'info');
+      await doSearch();
+      showTab('map');
+      setTimeout(()=>doGeocode(true),400);
+    }catch(e){toast('Chyba: '+e.message,'err');}
+  },err=>{
+    btn.disabled=false;btn.innerHTML='📍 V mém okolí';
+    toast('Poloha nedostupná: '+err.message,'err');
+  },{enableHighAccuracy:true,timeout:10000});
 }
-async function loadOkoli(){
-  if(!_okoliLat)return;
-  const btn=document.getElementById('btn-okoli');
-  document.getElementById('okoli-count').textContent='Načítám…';
-  try{
-    const r=await fetch(`${API}/okoli?lat=${_okoliLat}&lng=${_okoliLng}&radius=${_okoliRadius}&typ=${S.type}`);
-    const d=await r.json();
-    S.list=d.subjekty||[];
-    S.celkem=S.list.length;
-    document.getElementById('okoli-count').textContent=`Nalezeno: ${S.list.length} ${S.type==='bd'?'BD':'SVJ'}`;
-    document.getElementById('okoli-label').textContent=`Okolí ${_okoliRadius<1?(_okoliRadius*1000)+' m':_okoliRadius+' km'}`;
-    // Zobraz rovnou mapu
-    renderT();
-    if(S.list.length){
-      switchView('map');
-      setTimeout(()=>{
-        if(gMap&&_okoliLat){
-          gMap.setView([_okoliLat,_okoliLng],15);
-          // Přidej marker polohy uživatele
-          L.circle([_okoliLat,_okoliLng],{
-            radius:_okoliRadius*1000,
-            color:'var(--accent2)',
-            fillOpacity:0.05,
-            weight:2
-          }).addTo(gMap);
-        }
-      },300);
-    }
-  }catch(e){toast('Chyba: '+e.message,'err');}
-}
-function setRadius(r,btn){
-  _okoliRadius=r;
-  document.querySelectorAll('.okoli-opt').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  loadOkoli();
-}
-function closeOkoli(){
-  document.getElementById('okoli-bar').classList.remove('visible');
-  _okoliLat=null;_okoliLng=null;
-  S.list=[];S.celkem=0;
-  renderT();
-}
+
+
 </script>
 </body>
 </html>
