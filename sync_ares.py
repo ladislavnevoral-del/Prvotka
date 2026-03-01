@@ -10,7 +10,7 @@ DB_FILE      = "prvotkar.db"
 ARES_URL     = "https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/ekonomicke-subjekty/vyhledat"
 RUIAN_BASE   = "https://ruian.fnx.io/api/v1/ruian/build"
 RUIAN_KEY    = "cec9c90b443c5f6243ea6b2d878b4e5cbe0c8271c28cfb890de7a585595f6999"
-PRAVNI_FORMY = {"svj": "145", "bd": "112"}
+PRAVNI_FORMY = {"svj": "145", "bd": "205"}  # 205 = Bytová a stavební bytová družstva (112 = s.r.o. – chyba!)
 
 # ── DB ───────────────────────────────────────────────────────────────────────
 
@@ -236,7 +236,7 @@ def sync_vsechny_obce(conn, typ, kod_pf, obce):
 
 def main():
     print("=" * 60)
-    print("Prvotkář 3.0 – Kompletní ARES sync")
+    print("Prvotkář 3.1 – Kompletní ARES sync")
     print(f"Spuštěno: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 60)
 
@@ -266,6 +266,19 @@ def main():
     print(f"Celkem:    {svj_db+bd_db:,}")
     print("=" * 60)
     conn.close()
+
+    # Fáze 4: Geokódování nových adres
+    print("\n" + "=" * 60)
+    print("Fáze 4: Spouštím geokódování nových adres...")
+    print("(lze přerušit Ctrl+C, pokračuje při příštím spuštění)")
+    print("=" * 60)
+    try:
+        import geocode as _geo
+        _geo.main()
+    except KeyboardInterrupt:
+        print("\nGeokódování přerušeno – dokončíš při příštím syncu.")
+    except Exception as e:
+        print(f"\nChyba geokódování: {e}")
 
 if __name__ == "__main__":
     main()
