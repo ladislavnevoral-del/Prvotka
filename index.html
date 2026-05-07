@@ -369,7 +369,22 @@ function showTab(t){
 function onKraj(){}
 
 let acT=null;
-function acIn(v){clearTimeout(acT);if(v.length<1){hideAc();return;}acT=setTimeout(()=>{showAc(v);if(v.length>=3)preloadFilters(v);},400);}
+function acIn(v){
+  clearTimeout(acT);
+  if(v.length<1){
+    // Zobraz historii pokud pole prázdné
+    try{
+      const hist=JSON.parse(localStorage.getItem('prvotkar_hist')||'[]');
+      if(hist.length){
+        S.aci=hist;S.aix=-1;
+        const el=document.getElementById('acl');
+        el.innerHTML='<div style="padding:6px 14px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;font-weight:600">Poslední hledání</div>'+
+          hist.map((c,i)=>`<div class="ac-item" data-i="${i}" onclick="pickAc('${c.replace(/'/g,"\\'")}')"><span style="font-size:12px;opacity:0.4">🕐</span> ${c}</div>`).join('');
+        el.style.display='block';return;
+      }
+    }catch(e){}
+    hideAc();return;
+  }acT=setTimeout(()=>{showAc(v);if(v.length>=3)preloadFilters(v);},400);}
 function showAc(q){
   const f=CITIES.filter(c=>c.toLowerCase().startsWith(q.toLowerCase())).slice(0,9);
   S.aci=f;S.aix=-1;
@@ -392,9 +407,22 @@ function hideAc(){document.getElementById('acl').style.display='none';}
 document.addEventListener('click',e=>{if(!e.target.closest('.ac-wrap'))hideAc();});
 
 async function doSearch(){
+  // Pokud je zadáno 8 číslic = IČO, otevři přímo detail
+  const raw=document.getElementById('inp').value.trim();
+  if(/^\d{8}$/.test(raw)){
+    openDet(raw, '');
+    return;
+  }
   const obec=document.getElementById('inp').value.trim();
   if(!obec){toast('Zadejte název obce','err');document.getElementById('inp').focus();return;}
   S.obec=obec;S.page=1;hideAc();
+  // Uložit do historie
+  try{
+    let hist=JSON.parse(localStorage.getItem('prvotkar_hist')||'[]');
+    hist=hist.filter(h=>h!==obec);
+    hist.unshift(obec);
+    localStorage.setItem('prvotkar_hist',JSON.stringify(hist.slice(0,5)));
+  }catch(e){}
   const btn=document.getElementById('btn-go');
   btn.disabled=true;document.getElementById('go-ico').textContent='⏳';
   document.getElementById('pbar').style.display='block';
@@ -519,7 +547,16 @@ async function doGeocode(isOkoli){
     if(uliceFilter&&sd.nazevUlice!==uliceFilter)return false;
     return true;
   });
-  const todo=mapList.slice(0,isOkoli?20:80);
+  // Pokud hledáme okolí, vezmi celý seznam a seřaď podle vzdálenosti od userLat/Lng
+  let mapListSorted = mapList;
+  if(isOkoli && _userLat && _userLng){
+    mapListSorted = mapList.map(sv=>{
+      const sd=sv.sidlo||{};
+      // Hrubá vzdálenost podle PSČ/adresy nelze – geocódujeme online, takže vezmeme prvních 100 a seřadíme po geocódování
+      return sv;
+    });
+  }
+  const todo=mapListSorted.slice(0,isOkoli?100:80);
   for(let i=0;i<todo.length;i++){
     const sv=todo[i];const sd=sv.sidlo||{};
     const addr=[sd.nazevUlice,sd.cisloDomovni,sd.nazevObce,sd.psc].filter(Boolean).join(' ');
@@ -536,6 +573,19 @@ async function doGeocode(isOkoli){
       }
     }catch(e){}
     document.getElementById('mst').textContent=`${i+1}/${todo.length} geocódováno…`;
+  }
+  // Seřaď markery podle vzdálenosti od userLat/Lng a ponech jen 20 nejbližších
+  if(isOkoli&&_userLat&&S.mrks.length>20){
+    const withDist=S.mrks.map(m=>{
+      const ll=m.getLatLng();
+      const dx=ll.lat-_userLat, dy=ll.lng-_userLng;
+      return{m,dist:Math.sqrt(dx*dx+dy*dy)};
+    }).sort((a,b)=>a.dist-b.dist);
+    // Odstraň vzdálené markery
+    withDist.slice(20).forEach(x=>{x.m.remove();});
+    S.mrks=withDist.slice(0,20).map(x=>x.m);
+    bounds.length=0;
+    S.mrks.forEach(m=>{const ll=m.getLatLng();bounds.push([ll.lat,ll.lng]);});
   }
   if(bounds.length){
     S.map.fitBounds(bounds,{padding:[40,40]});
@@ -595,6 +645,7 @@ return`<div class="prow"><div class="av">${ini}</div><div><div class="pn">${esc(
       <a href="https://www.google.com/search?q=${encodeURIComponent((d.nazev||'')+' '+addr)}" target="_blank" class="el el-a">🌐 Web hledání</a>
     </div></div>
   ${osh}
+  ${d.osoby&&d.osoby.length?`<div style="margin:-8px 0 20px;"><button onclick="copyKontakt('${d.nazev||''}','${d.osoby[0]?.jmeno||''}','${d.osoby[0]?.funkce||''}')" style="background:var(--accent-lt);border:1px solid rgba(200,16,46,0.2);color:var(--accent);padding:7px 14px;border-radius:8px;font-size:12px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;display:flex;align-items:center;gap:6px;transition:all 0.15s" onmouseover="this.style.background='#fcc'" onmouseout="this.style.background='var(--accent-lt)'">📋 Zkopírovat kontakt předsedy</button></div>`:''}
   <div class="sec"><div class="sec-t">🔗 Veřejné zdroje</div>
     ${d.spisovaZnacka?`<div style="font-size:12px;color:var(--text3);margin-bottom:10px;">Spisová značka: <b style="color:var(--text2)">${esc(d.spisovaZnacka)}</b></div>`:''}
     <div class="lrow">
@@ -608,6 +659,18 @@ return`<div class="prow"><div class="av">${ini}</div><div><div class="pn">${esc(
     </div></div>`;
 }
 function closeMod(){document.getElementById('modal').style.display='none';}
+function copyKontakt(nazev,jmeno,funkce){
+  const text=`${nazev}\n${funkce}: ${jmeno}`;
+  navigator.clipboard.writeText(text).then(()=>{
+    toast('Kontakt zkopírován do schránky','ok');
+  }).catch(()=>{
+    // Fallback
+    const ta=document.createElement('textarea');
+    ta.value=text;document.body.appendChild(ta);ta.select();
+    document.execCommand('copy');document.body.removeChild(ta);
+    toast('Kontakt zkopírován','ok');
+  });
+}
 
 async function doExport(){
   if(!S.list.length){toast('Nejdříve vygenerujte seznam','err');return;}

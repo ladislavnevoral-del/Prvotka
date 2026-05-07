@@ -1,5 +1,5 @@
-fastapi
-uvicorn
-httpx
-openpyxl
-python-multipart
+fastapi>=0.110.0
+uvicorn>=0.29.0
+httpx>=0.27.0
+openpyxl>=3.1.2
+python-multipart>=0.0.9

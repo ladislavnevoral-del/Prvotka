@@ -1,7 +1,7 @@
 """
-Prvotkář 3.1 – Kompletní sync SVJ a BD z ARES
+Prvotkář 3.2 – Kompletní sync SVJ a BD z ARES
 Strategie: RUIAN API -> všechny obce ČR -> ARES kodObce filtr
-Pokryje všech ~79 873 SVJ a ~8 400 BD
+Opravy: ares_post čte HTTP 400, rekurzivní prefix pro Praha/Brno
 """
 import sqlite3, json, time, sys, urllib.request, urllib.error
 from datetime import datetime
@@ -10,9 +10,7 @@ DB_FILE      = "prvotkar.db"
 ARES_URL     = "https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/ekonomicke-subjekty/vyhledat"
 RUIAN_BASE   = "https://ruian.fnx.io/api/v1/ruian/build"
 RUIAN_KEY    = "cec9c90b443c5f6243ea6b2d878b4e5cbe0c8271c28cfb890de7a585595f6999"
-PRAVNI_FORMY = {"svj": "145", "bd": "205"}  # 205 = Bytová a stavební bytová družstva (112 = s.r.o. – chyba!)
-
-# ── DB ───────────────────────────────────────────────────────────────────────
+PRAVNI_FORMY = {"svj": "145", "bd": "205"}
 
 def get_db():
     conn = sqlite3.connect(DB_FILE)
@@ -22,14 +20,12 @@ def get_db():
         ulice TEXT, cislo_popisne TEXT, cislo_orientacni TEXT,
         psc TEXT, datum_vzniku TEXT, stav TEXT, updated_at TEXT
     )""")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_obec   ON subjekty(obec)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_typ    ON subjekty(typ)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_cast   ON subjekty(cast_obce)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_ulice  ON subjekty(ulice)")
+    for idx in ["idx_obec", "idx_typ", "idx_cast", "idx_ulice"]:
+        col = idx.replace("idx_", "")
+        col = {"obec":"obec","typ":"typ","cast":"cast_obce","ulice":"ulice"}[col]
+        conn.execute(f"CREATE INDEX IF NOT EXISTS {idx} ON subjekty({col})")
     conn.commit()
     return conn
-
-# ── HTTP ─────────────────────────────────────────────────────────────────────
 
 def http_get(url, retries=3):
     req = urllib.request.Request(url, headers={"Accept": "application/json"})
@@ -43,6 +39,7 @@ def http_get(url, retries=3):
     return None
 
 def ares_post(payload, retries=3):
+    """POST na ARES. Čte JSON body i z HTTP 400 (VYSTUP_PRILIS_MNOHO_VYSLEDKU)."""
     data = json.dumps(payload).encode()
     req  = urllib.request.Request(
         ARES_URL, data=data,
@@ -58,8 +55,7 @@ def ares_post(payload, retries=3):
                 print("\n  Rate limit ARES, čekám 30s...")
                 time.sleep(30)
             elif e.code == 400:
-                # ARES vrací HTTP 400 s JSON body "VYSTUP_PRILIS_MNOHO_VYSLEDKU"
-                # – musíme přečíst body i z chybové odpovědi
+                # ARES vrací HTTP 400 s JSON "VYSTUP_PRILIS_MNOHO_VYSLEDKU"
                 try:
                     return json.loads(e.read())
                 except Exception:
@@ -71,8 +67,6 @@ def ares_post(payload, retries=3):
                 time.sleep(5)
     return None
 
-# ── RUIAN: seznam všech obcí ─────────────────────────────────────────────────
-
 def get_vsechny_obce():
     print("  Načítám seznam krajů z RUIAN...")
     regions_data = http_get(f"{RUIAN_BASE}/regions?apiKey={RUIAN_KEY}")
@@ -82,8 +76,7 @@ def get_vsechny_obce():
 
     regions = regions_data.get("data", [])
     print(f"  Nalezeno {len(regions)} krajů")
-
-    obce = {}  # municipalityId -> municipalityName
+    obce = {}
     for reg in regions:
         rid  = reg["regionId"]
         rnam = reg["regionName"]
@@ -95,12 +88,10 @@ def get_vsechny_obce():
                 obce[m["municipalityId"]] = m["municipalityName"]
             print(f"    {rnam}: {len(muns)} obcí (celkem {len(obce)})")
         time.sleep(0.3)
-
     print(f"  ✅ Celkem {len(obce)} obcí ČR")
     return obce
 
 def _zaloha_obce():
-    """Minimální záloha pokud RUIAN selže."""
     return {
         554782: "Praha", 582786: "Brno", 554821: "Ostrava",
         554791: "Plzeň", 544973: "České Budějovice", 569810: "Liberec",
@@ -109,8 +100,6 @@ def _zaloha_obce():
         510266: "Opava", 598003: "Jihlava", 573868: "Teplice",
         598909: "Karlovy Vary", 560286: "Ústí nad Labem",
     }
-
-# ── Pomocné funkce ────────────────────────────────────────────────────────────
 
 def fmt_time(sec):
     sec = int(sec)
@@ -128,10 +117,8 @@ def print_progress(i, total, n_zaz, t0, label):
                  f"{n_zaz:,} zaznamu | ~{eta} zbyvá | "
                  f"{speed} obci/min | {label[:28]}")
     else:
-        line  = f"  [  0.0%] 0/{total} obci | spoustim..."
+        line = f"  [  0.0%] 0/{total} obci | spoustim..."
     print(line, end="\r", flush=True)
-
-# ── Uložení do DB ─────────────────────────────────────────────────────────────
 
 def uloz_batch(conn, typ, subjekty):
     rows = []
@@ -161,8 +148,6 @@ def uloz_batch(conn, typ, subjekty):
         """, rows)
         conn.commit()
 
-# ── Sync jedné obce ───────────────────────────────────────────────────────────
-
 def sync_obec(conn, typ, kod_pf, kod_obce, nazev_obce):
     start  = 0
     celkem = 0
@@ -176,7 +161,6 @@ def sync_obec(conn, typ, kod_pf, kod_obce, nazev_obce):
         if not d:
             break
         if d.get("subKod") == "VYSTUP_PRILIS_MNOHO_VYSLEDKU":
-            # Příliš mnoho – rozděl po písmenech názvu
             celkem += sync_obec_po_pismenech(conn, typ, kod_pf, kod_obce)
             return celkem
         subjekty = d.get("ekonomickeSubjekty", [])
@@ -191,13 +175,12 @@ def sync_obec(conn, typ, kod_pf, kod_obce, nazev_obce):
     return celkem
 
 def sync_obec_po_pismenech(conn, typ, kod_pf, kod_obce, prefix="", depth=0):
-    """Fallback pro velká města (Praha, Brno…) – kombinuje kodObce + prefix.
-    Rekurzivně jde hlouběji pokud prefix stále vrací příliš mnoho výsledků (max 5 znaků)."""
+    """Rekurzivní fallback pro velká města – jde hlouběji pokud prefix stále příliš velký (max 5 znaků)."""
     celkem = 0
     znaky  = "ABCČDĎEÉĚFGHIÍJKLMNŇOÓPQRŘSŠTŤUÚŮVWXYÝZŽ0123456789"
     for z in znaky:
         current = prefix + z
-        start = 0
+        start   = 0
         while True:
             d = ares_post({
                 "obchodniJmeno": current,
@@ -209,7 +192,6 @@ def sync_obec_po_pismenech(conn, typ, kod_pf, kod_obce, prefix="", depth=0):
             if not d:
                 break
             if d.get("subKod") == "VYSTUP_PRILIS_MNOHO_VYSLEDKU":
-                # Prefix stále příliš velký – jdi hlouběji (max 5 znaků)
                 if depth < 4:
                     celkem += sync_obec_po_pismenech(conn, typ, kod_pf, kod_obce, current, depth + 1)
                 break
@@ -224,60 +206,43 @@ def sync_obec_po_pismenech(conn, typ, kod_pf, kod_obce, prefix="", depth=0):
             time.sleep(0.15)
     return celkem
 
-# ── Sync všech obcí ───────────────────────────────────────────────────────────
-
 def sync_vsechny_obce(conn, typ, kod_pf, obce):
     print(f"\n{'='*60}")
     print(f"  Sync {typ.upper()} (pravniForma={kod_pf}) – {len(obce)} obcí")
     print(f"{'='*60}\n")
-
     obce_list = list(obce.items())
     n_obci    = len(obce_list)
     total     = 0
     t0        = time.time()
-
     for i, (kod_obce, nazev_obce) in enumerate(obce_list):
         print_progress(i, n_obci, total, t0, nazev_obce)
         total += sync_obec(conn, typ, kod_pf, kod_obce, nazev_obce)
         time.sleep(0.12)
-
     elapsed = time.time() - t0
     print(f"\n  [100.0%] {n_obci}/{n_obci} obci | "
           f"{total:,} zaznamu | hotovo za {fmt_time(elapsed)}          ")
     return total
 
-# ── MAIN ──────────────────────────────────────────────────────────────────────
-
 def main():
     print("=" * 60)
-    print("Prvotkář 3.1 – Kompletní ARES sync")
+    print("Prvotkář 3.2 – Kompletní ARES sync")
     print(f"Spuštěno: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 60)
-
     conn  = get_db()
     t_cel = time.time()
-
-    # 1. Stáhni seznam všech obcí ČR z RUIAN
     print("\nFáze 1: Načítám seznam obcí ČR z RUIAN...")
     obce = get_vsechny_obce()
     print(f"Celkem obcí ke zpracování: {len(obce):,}\n")
-
-    # 2. Sync SVJ
-    n_svj = sync_vsechny_obce(conn, "svj", PRAVNI_FORMY["svj"], obce)
+    n_svj  = sync_vsechny_obce(conn, "svj", PRAVNI_FORMY["svj"], obce)
     svj_db = conn.execute("SELECT COUNT(*) FROM subjekty WHERE typ='svj'").fetchone()[0]
     print(f"\n✅ SVJ: staženo {n_svj:,} | v DB celkem {svj_db:,}")
-
-    # 3. Sync BD
-    n_bd = sync_vsechny_obce(conn, "bd", PRAVNI_FORMY["bd"], obce)
-    bd_db = conn.execute("SELECT COUNT(*) FROM subjekty WHERE typ='bd'").fetchone()[0]
+    n_bd   = sync_vsechny_obce(conn, "bd", PRAVNI_FORMY["bd"], obce)
+    bd_db  = conn.execute("SELECT COUNT(*) FROM subjekty WHERE typ='bd'").fetchone()[0]
     print(f"\n✅ BD:  staženo {n_bd:,} | v DB celkem {bd_db:,}")
-
     elapsed = int(time.time() - t_cel)
     print(f"\n{'='*60}")
     print(f"SYNC DOKONČEN za {fmt_time(elapsed)}")
-    print(f"SVJ v DB:  {svj_db:,}")
-    print(f"BD v DB:   {bd_db:,}")
-    print(f"Celkem:    {svj_db+bd_db:,}")
+    print(f"SVJ v DB: {svj_db:,} | BD v DB: {bd_db:,} | Celkem: {svj_db+bd_db:,}")
     print("=" * 60)
     conn.close()
 
