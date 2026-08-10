@@ -38,17 +38,69 @@ STATIC_DIR = Path(__file__).parent / "static"
 # Synchronizace na pozadí + denní plánovač
 # ---------------------------------------------------------------------------
 
+def _notify_hot(results: list[dict]):
+    """Pošle e-mail s novými HOT/HIGH leady (pokud je nastaveno SMTP).
+
+    Potřebné proměnné prostředí: RADAR_SMTP_HOST, RADAR_SMTP_USER,
+    RADAR_SMTP_PASS, RADAR_NOTIFY_TO (volitelně RADAR_SMTP_PORT, vých. 587).
+    Bez nich se notifikace tiše přeskočí.
+    """
+    host = os.getenv("RADAR_SMTP_HOST")
+    to = os.getenv("RADAR_NOTIFY_TO")
+    if not host or not to:
+        return
+
+    hot = []
+    for r in results:
+        for d in r.get("documents", []):
+            if (not d.get("duplicate") and not d.get("error")
+                    and d.get("score", 0) >= 60):
+                hot.append((r.get("name", r.get("ico", "?")), r.get("ico"),
+                            d.get("score"), d.get("lead_level"),
+                            [s.get("label") + (f" = {s['value']}" if s.get("value") else "")
+                             for s in d.get("signals", [])[:6]]))
+    if not hot:
+        return
+
+    try:
+        import smtplib
+        from email.message import EmailMessage
+        msg = EmailMessage()
+        msg["Subject"] = f"RBD Radar: {len(hot)} nových nadějných leadů 🔥"
+        msg["From"] = os.getenv("RADAR_SMTP_USER", "radar@localhost")
+        msg["To"] = to
+        lines = []
+        for name, ico, score, level, signals in hot:
+            lines.append(f"• {name} (IČO {ico}) — {score}/100 {level}")
+            for s in signals:
+                lines.append(f"    · {s}")
+        lines.append("")
+        lines.append("Dashboard: https://rbd-radar.onrender.com")
+        msg.set_content("\n".join(lines))
+        with smtplib.SMTP(host, int(os.getenv("RADAR_SMTP_PORT", "587")),
+                          timeout=30) as smtp:
+            smtp.starttls()
+            user = os.getenv("RADAR_SMTP_USER")
+            if user:
+                smtp.login(user, os.getenv("RADAR_SMTP_PASS", ""))
+            smtp.send_message(msg)
+        print(f"Notifikace odeslána: {len(hot)} leadů -> {to}")
+    except Exception as exc:
+        print(f"Notifikace se nepodařila: {exc}")
+
+
 def _run_sync_job(limit: int, city: str | None, max_docs: int,
-                  since_days: int | None):
+                  since_days: int | None, icos: list[str] | None = None):
     SYNC_STATE.update(running=True, started_at=datetime.utcnow().isoformat(),
                       finished_at=None, progress="startuji…",
                       processed_subjects=0, new_documents=0, hot_found=0,
                       error=None)
     db = SessionLocal()
     try:
-        sync_many(db, limit=limit, city=city, max_docs=max_docs,
-                  since_days=since_days, state=SYNC_STATE)
+        results = sync_many(db, limit=limit, city=city, max_docs=max_docs,
+                            since_days=since_days, state=SYNC_STATE, icos=icos)
         SYNC_STATE["progress"] = "hotovo"
+        _notify_hot(results)
     except Exception as exc:
         SYNC_STATE["error"] = str(exc)
         SYNC_STATE["progress"] = "chyba"
@@ -59,12 +111,12 @@ def _run_sync_job(limit: int, city: str | None, max_docs: int,
 
 
 def _start_sync(limit: int, city: str | None, max_docs: int,
-                since_days: int | None) -> bool:
+                since_days: int | None, icos: list[str] | None = None) -> bool:
     if SYNC_STATE["running"]:
         return False
     threading.Thread(
         target=_run_sync_job,
-        args=(limit, city, max_docs, since_days),
+        args=(limit, city, max_docs, since_days, icos),
         daemon=True,
     ).start()
     return True
@@ -214,7 +266,8 @@ def subjects(limit: int = 20, city: str | None = None,
 
 
 class PrvotkarImportIn(BaseModel):
-    obec: str
+    obec: str | None = None
+    okres: str | None = None
     ulice: str | None = None
     cast_obce: str | None = None
     typ: str | None = None
@@ -223,11 +276,13 @@ class PrvotkarImportIn(BaseModel):
 
 @app.post("/api/import/prvotkar", dependencies=[Depends(require_api_key)])
 def prvotkar_import(payload: PrvotkarImportIn):
-    """Import SVJ/BD z Prvotkáře podle obce."""
+    """Import SVJ/BD z Prvotkáře podle obce nebo okresu."""
     from .prvotkar_client import import_obec
+    if not payload.obec and not payload.okres:
+        raise HTTPException(400, "Zadejte obec nebo okres.")
     try:
         out = import_obec(payload.obec, payload.ulice, payload.cast_obce,
-                          payload.typ, payload.limit)
+                          payload.typ, payload.limit, okres=payload.okres)
     except Exception as exc:
         raise HTTPException(502, f"Import z Prvotkáře selhal: {exc}")
     return {"status": "ok", **out}
@@ -253,10 +308,13 @@ def lead_by_ico(ico: str, db: Session = Depends(get_db)):
             "doc_type": d.doc_type,
             "date": d.meeting_date or d.document_date,
             "score": d.score or 0,
+            "source_url": d.source_url,
             "signals": [{
                 "label": s.label or s.keyword,
                 "value": s.value,
                 "priority": s.priority,
+                "keyword": s.keyword,
+                "evidence": s.evidence,
             } for s in sorted(d.signals,
                               key=lambda x: x.priority or 0, reverse=True)],
         } for d in docs],
@@ -332,6 +390,7 @@ class SyncRunIn(BaseModel):
     city: str | None = None
     max_docs: int = 3
     since_days: int | None = None
+    icos: list[str] | None = None
 
 
 @app.post("/api/sync/run", dependencies=[Depends(require_api_key)])
@@ -339,12 +398,17 @@ def sync_run(payload: SyncRunIn):
     """Spustí synchronizaci se Sbírkou listin na pozadí.
 
     Příklady: {"since_days": 30, "limit": 50} — nové zápisy za měsíc;
-              {"city": "Brno", "limit": 20} — jen vybrané město.
+              {"city": "Brno", "limit": 20} — jen vybrané město;
+              {"icos": ["3438546", …]} — konkrétní subjekty (např. okres).
     """
+    if payload.icos and len(payload.icos) > 500:
+        raise HTTPException(400, "Najednou lze synchronizovat max. 500 subjektů.")
     if not _start_sync(payload.limit, payload.city, payload.max_docs,
-                       payload.since_days):
+                       payload.since_days, payload.icos):
         raise HTTPException(409, "Synchronizace už běží — počkejte, až doběhne.")
-    return {"status": "started", **payload.model_dump()}
+    return {"status": "started",
+            **{k: v for k, v in payload.model_dump().items() if k != "icos"},
+            "icos_count": len(payload.icos or [])}
 
 
 @app.get("/api/sync/status")
@@ -374,14 +438,16 @@ def sync_listiny(ico: str, payload: SyncIn | None = None,
 # ---------------------------------------------------------------------------
 
 @app.get("/api/leads")
-def leads(min_score: int = 1, limit: int = 100, db: Session = Depends(get_db)):
+def leads(min_score: int = 1, limit: int = 100, city: str | None = None,
+          db: Session = Depends(get_db)):
     """Leady seskupené podle SVJ; skóre subjektu = nejlepší dokument."""
-    rows = db.execute(
-        select(Document, Subject)
-        .join(Subject, Document.subject_id == Subject.id)
-        .where(Document.score >= min_score)
-        .order_by(desc(Document.score), desc(Document.document_date))
-    ).all()
+    q = (select(Document, Subject)
+         .join(Subject, Document.subject_id == Subject.id)
+         .where(Document.score >= min_score)
+         .order_by(desc(Document.score), desc(Document.document_date)))
+    if city:
+        q = q.where(Subject.city.ilike(f"%{city}%"))
+    rows = db.execute(q).all()
 
     by_subject: dict[int, dict] = {}
     for doc, subject in rows:
@@ -416,6 +482,7 @@ def leads(min_score: int = 1, limit: int = 100, db: Session = Depends(get_db)):
                 "points": s.points,
                 "value": s.value,
                 "evidence": s.evidence,
+                "keyword": s.keyword,
             } for s in signals],
         })
         if (doc.score or 0) > entry["score"]:
@@ -424,6 +491,79 @@ def leads(min_score: int = 1, limit: int = 100, db: Session = Depends(get_db)):
 
     result = sorted(by_subject.values(), key=lambda x: x["score"], reverse=True)
     return result[:limit]
+
+
+# ---------------------------------------------------------------------------
+# Export pro obchodníky
+# ---------------------------------------------------------------------------
+
+@app.get("/api/export/leads.xlsx")
+def export_leads(min_score: int = 35, city: str | None = None,
+                 db: Session = Depends(get_db)):
+    """Excel se seznamem leadů pro obchodníky."""
+    import io
+    from fastapi.responses import StreamingResponse
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    data = leads(min_score=min_score, limit=1000, city=city, db=db)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Leady"
+    headers = ["Skóre", "Úroveň", "SVJ", "IČO", "Adresa", "Město",
+               "Signály", "Hodnoty", "Poslední zápis", "Odkaz na listinu"]
+    ws.append(headers)
+    level_fill = {"HOT": "DC2626", "HIGH": "EA580C", "WATCH": "CA8A04"}
+    for cell in ws[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="1E293B")
+
+    for lead in data:
+        seen, sig_labels, sig_values = set(), [], []
+        last_date, source = None, None
+        for doc in lead["documents"]:
+            d = doc.get("meeting_date") or doc.get("document_date")
+            if d and (last_date is None or d > last_date):
+                last_date, source = d, doc.get("source_url")
+            for s in doc["signals"]:
+                if s["label"] in seen:
+                    continue
+                seen.add(s["label"])
+                sig_labels.append(s["label"])
+                if s.get("value"):
+                    sig_values.append(f"{s['label']}: {s['value']}")
+        ws.append([
+            lead["score"], lead["lead_level"], lead["name"], lead["ico"],
+            lead.get("address") or "", lead.get("city") or "",
+            ", ".join(sig_labels), ", ".join(sig_values),
+            last_date.strftime("%d.%m.%Y") if last_date else "",
+            source or "",
+        ])
+        fill = level_fill.get(lead["lead_level"])
+        if fill:
+            ws.cell(row=ws.max_row, column=2).fill = PatternFill(
+                "solid", fgColor=fill)
+            ws.cell(row=ws.max_row, column=2).font = Font(
+                bold=True, color="FFFFFF")
+
+    widths = [8, 9, 46, 11, 34, 16, 44, 40, 14, 50]
+    for i, w in enumerate(widths, 1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = f"A1:J{ws.max_row}"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    filename = f"rbd-radar-leady{('-' + city) if city else ''}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument"
+                   ".spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ---------------------------------------------------------------------------
