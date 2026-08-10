@@ -299,7 +299,10 @@ let beOk=false;
 // Radar běží lokálně vedle Prvotkáře (Prvotkář má port 8000, Radar 8001):
 //   cd rbd_radar_v02 && python -m uvicorn app.main:app --port 8001
 // Adresu lze přepsat: localStorage.setItem('radarUrl','https://...')
-const RADAR = localStorage.getItem('radarUrl') || 'http://127.0.0.1:8001';
+const RADAR = localStorage.getItem('radarUrl') ||
+  (location.hostname === 'localhost' || location.hostname === '127.0.0.1'
+    ? 'http://127.0.0.1:8001'                 // lokální vývoj (Prvotkář 8000, Radar 8001)
+    : 'https://rbd-radar.onrender.com');      // web: Radar nasazený na Renderu
 let radarOk = false;
 const RADAR_LEADS = {};            // ico (bez úvodních nul) -> {score, lead_level}
 const RADAR_COLORS = {HOT:'#dc2626', HIGH:'#ea580c', WATCH:'#ca8a04', LOW:'#94a3b8'};
@@ -618,11 +621,16 @@ async function doGeocode(isOkoli){
     const sv=todo[i];const sd=sv.sidlo||{};
     const addr=[sd.nazevUlice,sd.cisloDomovni,sd.nazevObce,sd.psc].filter(Boolean).join(' ');
     try{
-      await slp(120);
-      const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addr+', Česká republika')}&limit=1`,{headers:{'Accept-Language':'cs','User-Agent':'SVJFinder/1.0'}});
-      const rs=await r.json();
-      if(rs&&rs[0]){
-        const lat=+rs[0].lat,lon=+rs[0].lon;
+      // Nejdřív souřadnice z databáze (rychlé, bez limitů Nominatimu);
+      // online geocoding jen jako záloha pro subjekty bez lat/lng.
+      let lat=+sv.lat||null, lon=+sv.lng||null;
+      if(!lat||!lon){
+        await slp(120);
+        const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addr+', Česká republika')}&limit=1`,{headers:{'Accept-Language':'cs','User-Agent':'SVJFinder/1.0'}});
+        const rs=await r.json();
+        if(rs&&rs[0]){lat=+rs[0].lat;lon=+rs[0].lon;}
+      }
+      if(lat&&lon){
         const ns=(sv.obchodniJmeno||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         const _lead=radarFor(sv.ico);
         const _fill=_lead?(RADAR_COLORS[_lead.lead_level]||'#2563eb'):'#2563eb';
