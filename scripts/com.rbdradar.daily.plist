@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.rbdradar.daily</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/ladislavnevoral/Downloads/RBD Radar/rbd_radar_v02/scripts/daily_sync.sh</string>
+  </array>
+
+  <!-- Každý den v 7:30 ráno -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>7</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+
+  <!-- Když Mac v 7:30 spal, spustí se po probuzení -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/rbdradar.launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/rbdradar.launchd.err</string>
+</dict>
+</plist>
