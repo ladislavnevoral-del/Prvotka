@@ -2,6 +2,8 @@ import hashlib
 import os
 import shutil
 import tempfile
+import threading
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -13,10 +15,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, desc, func
 from sqlalchemy.orm import Session
 
-from .db import init_db, get_db
+from .db import init_db, get_db, SessionLocal
 from .models import Subject, Document, Signal
 from .signal_engine import lead_level
-from .pipeline import ingest_text, ingest_pdf
+from .pipeline import ingest_text, ingest_pdf, sync_many, SYNC_STATE
 from .import_justice import import_dataset
 
 app = FastAPI(title="RBD Radar", version="0.3.0")
@@ -32,10 +34,65 @@ app.add_middleware(
 STATIC_DIR = Path(__file__).parent / "static"
 
 
+# ---------------------------------------------------------------------------
+# Synchronizace na pozadí + denní plánovač
+# ---------------------------------------------------------------------------
+
+def _run_sync_job(limit: int, city: str | None, max_docs: int,
+                  since_days: int | None):
+    SYNC_STATE.update(running=True, started_at=datetime.utcnow().isoformat(),
+                      finished_at=None, progress="startuji…",
+                      processed_subjects=0, new_documents=0, hot_found=0,
+                      error=None)
+    db = SessionLocal()
+    try:
+        sync_many(db, limit=limit, city=city, max_docs=max_docs,
+                  since_days=since_days, state=SYNC_STATE)
+        SYNC_STATE["progress"] = "hotovo"
+    except Exception as exc:
+        SYNC_STATE["error"] = str(exc)
+        SYNC_STATE["progress"] = "chyba"
+    finally:
+        db.close()
+        SYNC_STATE["running"] = False
+        SYNC_STATE["finished_at"] = datetime.utcnow().isoformat()
+
+
+def _start_sync(limit: int, city: str | None, max_docs: int,
+                since_days: int | None) -> bool:
+    if SYNC_STATE["running"]:
+        return False
+    threading.Thread(
+        target=_run_sync_job,
+        args=(limit, city, max_docs, since_days),
+        daemon=True,
+    ).start()
+    return True
+
+
+def _daily_scheduler():
+    """Denní automatická synchronizace (RADAR_DAILY_SYNC=1).
+
+    Běží uvnitř webové služby, takže není potřeba placený cron.
+    Čas v UTC nastavuje RADAR_SYNC_HOUR_UTC (výchozí 5 ≈ 7:00 v ČR v létě).
+    """
+    hour = int(os.getenv("RADAR_SYNC_HOUR_UTC", "5"))
+    limit = int(os.getenv("RADAR_SYNC_LIMIT", "15"))
+    last_run_day = None
+    while True:
+        now = datetime.utcnow()
+        if now.hour == hour and last_run_day != now.date():
+            last_run_day = now.date()
+            _start_sync(limit=limit, city=None, max_docs=3, since_days=None)
+        time.sleep(300)
+
+
 @app.on_event("startup")
 def startup():
     Path("data").mkdir(exist_ok=True)
     init_db()
+    if os.getenv("RADAR_DAILY_SYNC") == "1":
+        threading.Thread(target=_daily_scheduler, daemon=True).start()
 
 
 class SubjectIn(BaseModel):
@@ -255,6 +312,31 @@ async def upload_document(ico: str = Form(...),
     if result.get("error"):
         raise HTTPException(422, result["error"])
     return result
+
+
+class SyncRunIn(BaseModel):
+    limit: int = 20
+    city: str | None = None
+    max_docs: int = 3
+    since_days: int | None = None
+
+
+@app.post("/api/sync/run", dependencies=[Depends(require_api_key)])
+def sync_run(payload: SyncRunIn):
+    """Spustí synchronizaci se Sbírkou listin na pozadí.
+
+    Příklady: {"since_days": 30, "limit": 50} — nové zápisy za měsíc;
+              {"city": "Brno", "limit": 20} — jen vybrané město.
+    """
+    if not _start_sync(payload.limit, payload.city, payload.max_docs,
+                       payload.since_days):
+        raise HTTPException(409, "Synchronizace už běží — počkejte, až doběhne.")
+    return {"status": "started", **payload.model_dump()}
+
+
+@app.get("/api/sync/status")
+def sync_status():
+    return SYNC_STATE
 
 
 @app.post("/api/subjects/{ico}/sync-listiny", dependencies=[Depends(require_api_key)])
