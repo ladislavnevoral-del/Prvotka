@@ -1,0 +1,101 @@
+diff --git a/index.html b/index.html
+index 7ce838a..38fb87c 100644
+--- a/index.html
++++ b/index.html
+@@ -295,6 +295,63 @@ const API = window.location.hostname === 'localhost' || window.location.hostname
+ let beOk=false;
+ (async()=>{try{const r=await fetch(API+'/kraje',{signal:AbortSignal.timeout(2000)});if(r.ok)beOk=true;}catch(e){}})();
+ 
++// ── RBD Radar integrace ──────────────────────────────────────────────────────
++// Radar běží lokálně vedle Prvotkáře (Prvotkář má port 8000, Radar 8001):
++//   cd rbd_radar_v02 && python -m uvicorn app.main:app --port 8001
++// Adresu lze přepsat: localStorage.setItem('radarUrl','https://...')
++const RADAR = localStorage.getItem('radarUrl') || 'http://127.0.0.1:8001';
++let radarOk = false;
++const RADAR_LEADS = {};            // ico (bez úvodních nul) -> {score, lead_level}
++const RADAR_COLORS = {HOT:'#dc2626', HIGH:'#ea580c', WATCH:'#ca8a04', LOW:'#94a3b8'};
++const radarIco = ico => String(ico||'').replace(/^0+/,'');
++const radarFor = ico => RADAR_LEADS[radarIco(ico)] || null;
++
++async function loadRadar(){
++  try{
++    const r = await fetch(`${RADAR}/api/leads?min_score=1&limit=1000`,
++                          {signal: AbortSignal.timeout(4000)});
++    if(!r.ok) return;
++    (await r.json()).forEach(l => {
++      RADAR_LEADS[radarIco(l.ico)] = {score: l.score, lead_level: l.lead_level};
++    });
++    radarOk = true;
++  }catch(e){/* Radar neběží – aplikace funguje normálně dál */}
++}
++loadRadar();
++
++function radarBadge(ico, small){
++  const l = radarFor(ico);
++  if(!l) return '';
++  const c = RADAR_COLORS[l.lead_level] || RADAR_COLORS.LOW;
++  return `<span title="RBD Radar: obchodní potenciál" style="display:inline-block;margin-left:6px;padding:${small?'1px 7px':'2px 9px'};border-radius:999px;background:${c};color:#fff;font-size:${small?'10px':'11px'};font-weight:700;vertical-align:middle">📡 ${l.score}</span>`;
++}
++
++async function fillRadarSec(ico){
++  const el = document.getElementById('radar-sec');
++  if(!el) return;
++  try{
++    const r = await fetch(`${RADAR}/api/leads/${radarIco(ico)}`,
++                          {signal: AbortSignal.timeout(4000)});
++    if(!r.ok){ el.innerHTML=''; return; }
++    const d = await r.json();
++    const c = RADAR_COLORS[d.lead_level] || RADAR_COLORS.LOW;
++    const sigs = [];
++    const seen = new Set();
++    (d.documents||[]).forEach(doc => (doc.signals||[]).forEach(s => {
++      const key = s.label + (s.value||'');
++      if(seen.has(key)) return; seen.add(key);
++      sigs.push(`<span style="display:inline-block;margin:3px 4px 0 0;padding:3px 10px;border-radius:999px;background:${s.value?'#ecfdf5':'#eef2ff'};color:${s.value?'#065f46':'#3730a3'};font-size:12px">${esc(s.label)}${s.value?': '+esc(s.value):''}</span>`);
++    }));
++    el.innerHTML = `<div class="sec"><div class="sec-t">📡 RBD Radar — obchodní potenciál</div>
++      <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
++        <span style="padding:6px 14px;border-radius:9px;background:${c};color:#fff;font-weight:700">${d.score}/100 · ${d.lead_level}</span>
++        <span style="font-size:12px;color:var(--text3)">${(d.documents||[]).length} zpracovaných listin</span>
++      </div>
++      <div>${sigs.join('') || '<span style="font-size:12px;color:var(--text3)">Zatím žádné signály — listiny nebyly zpracovány.</span>'}</div></div>`;
++  }catch(e){ el.innerHTML=''; }
++}
++// ── konec RBD Radar integrace ────────────────────────────────────────────────
++
+ const KRAJE={
+   'CZ010':{n:'Hlavní město Praha',o:['Praha 1','Praha 2','Praha 3','Praha 4','Praha 5','Praha 6','Praha 7','Praha 8','Praha 9','Praha 10','Praha 11','Praha 12','Praha 13','Praha 14','Praha 15','Praha 16']},
+   'CZ020':{n:'Středočeský kraj',o:['Benešov','Beroun','Kladno','Kolín','Kutná Hora','Mělník','Mladá Boleslav','Nymburk','Praha-východ','Praha-západ','Příbram','Rakovník']},
+@@ -504,7 +561,7 @@ function renderT(){
+     const yr=sv.datumVzniku?sv.datumVzniku.slice(0,4):'–';
+     const ns=(sv.obchodniJmeno||'').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+     h+=`<tr onclick="openDet('${sv.ico}','${ns}')">
+-      <td class="tdn">${esc(sv.obchodniJmeno||'–')}<small>IČO: ${sv.ico}</small></td>
++      <td class="tdn">${esc(sv.obchodniJmeno||'–')}${radarBadge(sv.ico,true)}<small>IČO: ${sv.ico}</small></td>
+       <td><span class="ico-c">${sv.ico}</span></td>
+       <td class="tda">${ul?esc(ul)+(cp?' '+cp:''):'–'}<br>${esc(sd.nazevObce||'')}</td>
+       <td><span class="yr-t">${yr}</span></td>
+@@ -567,8 +624,10 @@ async function doGeocode(isOkoli){
+       if(rs&&rs[0]){
+         const lat=+rs[0].lat,lon=+rs[0].lon;
+         const ns=(sv.obchodniJmeno||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+-        const m=L.circleMarker([lat,lon],{radius:8,fillColor:'#2563eb',color:'#1a3fa0',weight:2,fillOpacity:0.85}).addTo(S.map);
+-        m.bindPopup(`<div style="font-family:'Outfit',sans-serif;min-width:230px;padding:4px 0"><strong style="font-size:13px">${ns}</strong><br><span style="font-size:11px;color:#8a8278">${esc(addr)}</span><br><span style="font-size:10px;color:#8a8278;font-family:monospace">IČO: ${sv.ico}</span><div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap"><a href="https://mapy.cz/zakladni?q=${encodeURIComponent(addr+' Česká republika')}" target="_blank" style="font-size:11px;color:#2563eb;text-decoration:none;background:#dbeafe;padding:3px 8px;border-radius:4px">🗺 Mapy.cz</a><a href="https://www.google.com/maps/search/${encodeURIComponent(addr+' Česká republika')}" target="_blank" style="font-size:11px;color:#0d7a4e;text-decoration:none;background:#d1fae5;padding:3px 8px;border-radius:4px">📍 Google</a><button onclick="closePops();openDet('${sv.ico}','')" style="font-size:11px;background:#2563eb;color:white;border:none;padding:3px 8px;border-radius:4px;cursor:pointer">Detail</button></div></div>`);
++        const _lead=radarFor(sv.ico);
++        const _fill=_lead?(RADAR_COLORS[_lead.lead_level]||'#2563eb'):'#2563eb';
++        const m=L.circleMarker([lat,lon],{radius:_lead?10:8,fillColor:_fill,color:_lead?'#7f1d1d':'#1a3fa0',weight:2,fillOpacity:0.85}).addTo(S.map);
++        m.bindPopup(`<div style="font-family:'Outfit',sans-serif;min-width:230px;padding:4px 0"><strong style="font-size:13px">${ns}</strong>${radarBadge(sv.ico,true)}<br><span style="font-size:11px;color:#8a8278">${esc(addr)}</span><br><span style="font-size:10px;color:#8a8278;font-family:monospace">IČO: ${sv.ico}</span><div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap"><a href="https://mapy.cz/zakladni?q=${encodeURIComponent(addr+' Česká republika')}" target="_blank" style="font-size:11px;color:#2563eb;text-decoration:none;background:#dbeafe;padding:3px 8px;border-radius:4px">🗺 Mapy.cz</a><a href="https://www.google.com/maps/search/${encodeURIComponent(addr+' Česká republika')}" target="_blank" style="font-size:11px;color:#0d7a4e;text-decoration:none;background:#d1fae5;padding:3px 8px;border-radius:4px">📍 Google</a><button onclick="closePops();openDet('${sv.ico}','')" style="font-size:11px;background:#2563eb;color:white;border:none;padding:3px 8px;border-radius:4px;cursor:pointer">Detail</button></div></div>`);
+         S.mrks.push(m);bounds.push([lat,lon]);
+       }
+     }catch(e){}
+@@ -656,7 +715,9 @@ return`<div class="prow"><div class="av">${ini}</div><div><div class="pn">${esc(
+         : `<a href="https://or.justice.cz/ias/ui/rejstrik-$firma?ico=${d.ico}&jenPlatne=PLATNE" target="_blank" class="el el-b">⚖️ Veřejný rejstřík</a>`
+       }
+       <a href="https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/ekonomicke-subjekty/${d.ico}" target="_blank" class="el el-a">📄 ARES</a>
+-    </div></div>`;
++    </div></div>
++  <div id="radar-sec"></div>`;
++  fillRadarSec(d.ico);
+ }
+ function closeMod(){document.getElementById('modal').style.display='none';}
+ function copyKontakt(nazev,jmeno,funkce){
