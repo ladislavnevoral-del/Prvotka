@@ -79,6 +79,27 @@
   .sig .toggle { color: var(--accent); font-size: 12px; cursor: pointer; user-select: none; }
   .empty { text-align: center; color: var(--muted); padding: 60px 0; }
   a { color: var(--accent); text-decoration: none; }
+
+  /* Ovládací panel synchronizace */
+  .panel {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 18px; margin-bottom: 18px;
+  }
+  .panel h2 { font-size: 14px; margin: 0 0 10px; }
+  .panel .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+  .panel input {
+    padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px;
+    font-size: 13.5px; background: var(--card); color: var(--ink);
+  }
+  .panel button {
+    padding: 7px 14px; border: none; border-radius: 8px; cursor: pointer;
+    background: var(--accent); color: #fff; font-size: 13.5px; font-weight: 600;
+  }
+  .panel button.sec { background: #eef2ff; color: #3730a3; }
+  .panel button:disabled { opacity: .5; cursor: default; }
+  .sync-status { font-size: 13px; color: var(--muted); }
+  .sync-status.err { color: var(--hot); }
+  .sync-status.run { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -88,6 +109,23 @@
 </header>
 <main>
   <div class="stats" id="stats"></div>
+
+  <div class="panel">
+    <h2>⚙️ Synchronizace se Sbírkou listin</h2>
+    <div class="row">
+      <button onclick="runSync({since_days: 30, limit: 100})">⬇️ Nové zápisy za 30 dní</button>
+      <input id="syncCity" placeholder="Město (např. Brno)" style="width:160px">
+      <input id="syncLimit" type="number" value="20" min="1" max="200" style="width:70px" title="Počet SVJ">
+      <button class="sec" onclick="runSync({city: val('syncCity'), limit: +val('syncLimit')||20})">🏙 Synchronizovat město</button>
+      <input id="impObec" placeholder="Import obce z Prvotkáře" style="width:190px">
+      <button class="sec" onclick="importPrvotkar()">📥 Importovat SVJ</button>
+    </div>
+    <div class="row">
+      <input id="apiKey" type="password" placeholder="API klíč (X-API-Key)" style="width:220px">
+      <span class="sync-status" id="syncStatus"></span>
+    </div>
+  </div>
+
   <div class="controls">
     <input type="search" id="q" placeholder="Hledat podle názvu, adresy nebo IČO…">
     <select id="minScore">
@@ -183,10 +221,77 @@ function render() {
     </div>`).join('');
 }
 
+// ---------- Synchronizace ----------
+const val = id => document.getElementById(id).value.trim();
+const keyEl = document.getElementById('apiKey');
+keyEl.value = localStorage.getItem('radarApiKey') || '';
+keyEl.addEventListener('change', () => localStorage.setItem('radarApiKey', keyEl.value.trim()));
+
+let pollTimer = null;
+
+function setSyncStatus(text, cls) {
+  const el = document.getElementById('syncStatus');
+  el.textContent = text; el.className = 'sync-status ' + (cls || '');
+}
+
+async function runSync(params) {
+  if (params.city === '') { setSyncStatus('Zadejte město.', 'err'); return; }
+  const key = keyEl.value.trim();
+  if (!key) { setSyncStatus('Vyplňte API klíč (RADAR_API_KEY z Renderu).', 'err'); keyEl.focus(); return; }
+  try {
+    const r = await fetch('/api/sync/run', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-API-Key': key},
+      body: JSON.stringify(params),
+    });
+    const d = await r.json();
+    if (!r.ok) { setSyncStatus(d.detail || ('Chyba ' + r.status), 'err'); return; }
+    setSyncStatus('Spuštěno…', 'run');
+    pollSync();
+  } catch (e) { setSyncStatus('Chyba: ' + e.message, 'err'); }
+}
+
+async function importPrvotkar() {
+  const obec = val('impObec');
+  if (!obec) { setSyncStatus('Zadejte název obce pro import.', 'err'); return; }
+  const key = keyEl.value.trim();
+  if (!key) { setSyncStatus('Vyplňte API klíč.', 'err'); keyEl.focus(); return; }
+  setSyncStatus(`Importuji SVJ z Prvotkáře: ${obec}…`, 'run');
+  try {
+    const r = await fetch('/api/import/prvotkar', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-API-Key': key},
+      body: JSON.stringify({obec}),
+    });
+    const d = await r.json();
+    if (!r.ok) { setSyncStatus(d.detail || ('Chyba ' + r.status), 'err'); return; }
+    setSyncStatus(`Import hotov: nové ${d.inserted}, aktualizované ${d.updated}. Teď můžete spustit synchronizaci města.`);
+    loadStats();
+  } catch (e) { setSyncStatus('Chyba: ' + e.message, 'err'); }
+}
+
+async function pollSync() {
+  clearTimeout(pollTimer);
+  try {
+    const s = await (await fetch('/api/sync/status')).json();
+    if (s.running) {
+      setSyncStatus(`⏳ ${s.progress} · nové dokumenty: ${s.new_documents} · nadějné: ${s.hot_found}`, 'run');
+      pollTimer = setTimeout(pollSync, 5000);
+    } else if (s.started_at) {
+      if (s.error) setSyncStatus('Chyba synchronizace: ' + s.error, 'err');
+      else if (s.finished_at) {
+        setSyncStatus(`✅ Hotovo · SVJ: ${s.processed_subjects} · nové dokumenty: ${s.new_documents} · nadějné: ${s.hot_found}`);
+        loadStats(); loadLeads();
+      }
+    }
+  } catch (e) { /* server nedostupný — zkusíme příště */ }
+}
+
 document.getElementById('q').addEventListener('input', render);
 document.getElementById('minScore').addEventListener('change', loadLeads);
 loadStats();
 loadLeads();
+pollSync();
 </script>
 </body>
 </html>
