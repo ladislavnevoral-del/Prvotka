@@ -312,8 +312,9 @@ const radarFor = ico => RADAR_LEADS[radarIco(ico)] || null;
 async function loadRadar(){
   try{
     const r = await fetch(`${RADAR}/api/leads?min_score=1&limit=1000`,
-                          {signal: AbortSignal.timeout(4000)});
+                          {signal: AbortSignal.timeout(8000)});
     if(!r.ok) return;
+    Object.keys(RADAR_LEADS).forEach(k => delete RADAR_LEADS[k]);
     (await r.json()).forEach(l => {
       RADAR_LEADS[radarIco(l.ico)] = {score: l.score, lead_level: l.lead_level};
     });
@@ -321,6 +322,119 @@ async function loadRadar(){
   }catch(e){/* Radar neběží – aplikace funguje normálně dál */}
 }
 loadRadar();
+
+// --- „Načíst zápisy" pro aktuální obec: import SVJ -> sync -> obarvení ------
+function radarApiKey(){
+  let k = (localStorage.getItem('radarApiKey')||'').trim();
+  if(!k){
+    k = (prompt('Vložte API klíč Radaru (RADAR_API_KEY z Renderu).\nUloží se v prohlížeči, ptám se jen jednou:')||'').trim();
+    if(k) localStorage.setItem('radarApiKey', k);
+  }
+  return k;
+}
+
+function radarProgEl(){
+  let el = document.getElementById('radarProg');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'radarProg';
+    el.style.cssText = 'position:fixed;bottom:18px;right:18px;z-index:999;'
+      + 'background:#1e293b;color:#fff;padding:10px 16px;border-radius:10px;'
+      + 'font-size:13px;box-shadow:0 4px 18px rgba(0,0,0,.25);max-width:340px;display:none';
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+let _radarPollT = null;
+
+async function radarLoadCity(){
+  if(!S.obec){ toast('Nejdřív vyhledejte obec','err'); return; }
+  const key = radarApiKey();
+  if(!key){ toast('Bez API klíče Radaru to nejde','err'); return; }
+
+  const scope = document.getElementById('radarScope')?.value || 'obec';
+  let importBody = {obec: S.obec};
+  let label = `obce ${S.obec}`;
+  if(scope === 'okres'){
+    const okres = (S.list.find(sv => sv.sidlo && sv.sidlo.nazevOkresu) || {}).sidlo?.nazevOkresu;
+    if(!okres){
+      toast('Okres zatím není v datech — projeví se po novém běhu sync_ares.py. Zpracuji zatím obec.','info');
+    } else {
+      importBody = {okres};
+      label = `okresu ${okres}`;
+    }
+  }
+
+  const el = radarProgEl();
+  el.style.display = 'block';
+  el.textContent = `📡 Připravuji SVJ ${label}…`;
+  try{
+    let r = await fetch(`${RADAR}/api/import/prvotkar`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-API-Key':key},
+      body: JSON.stringify(importBody),
+    });
+    if(r.status===401){ localStorage.removeItem('radarApiKey'); throw new Error('Neplatný API klíč — zkuste to znovu.'); }
+    if(!r.ok){ const d=await r.json().catch(()=>({})); throw new Error(d.detail||('import '+r.status)); }
+    const imp = await r.json();
+    let icos = imp.icos || [];
+    if(icos.length > 400){
+      toast(`Subjektů je ${icos.length} — zpracuji prvních 400, zbytek při dalším spuštění.`,'info');
+      icos = icos.slice(0, 400);
+    }
+
+    const syncBody = icos.length
+      ? {icos, limit: icos.length}
+      : {city: S.obec, limit: 100};
+    r = await fetch(`${RADAR}/api/sync/run`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-API-Key':key},
+      body: JSON.stringify(syncBody),
+    });
+    if(r.status!==409 && !r.ok){ const d=await r.json().catch(()=>({})); throw new Error(d.detail||('sync '+r.status)); }
+    if(r.status===409) toast('Radar už zpracovává jinou dávku — připojuji se k průběhu','info');
+    radarPollLoop();
+  }catch(e){
+    el.style.display = 'none';
+    toast('Radar: '+e.message,'err');
+  }
+}
+
+function radarExport(){
+  const scope = document.getElementById('radarScope')?.value || 'obec';
+  let url = `${RADAR}/api/export/leads.xlsx?min_score=35`;
+  if(scope === 'obec' && S.obec) url += `&city=${encodeURIComponent(S.obec)}`;
+  window.open(url, '_blank');
+  toast('Stahuji Excel s leady…','ok');
+}
+
+async function radarPollLoop(){
+  clearTimeout(_radarPollT);
+  const el = radarProgEl();
+  try{
+    const s = await (await fetch(`${RADAR}/api/sync/status`)).json();
+    if(s.running){
+      el.style.display = 'block';
+      el.textContent = `📡 ${s.progress} · nové dokumenty: ${s.new_documents}` +
+                       (s.hot_found ? ` · 🔥 nadějné: ${s.hot_found}` : '');
+      _radarPollT = setTimeout(radarPollLoop, 5000);
+      return;
+    }
+    if(s.error){ el.style.display='none'; toast('Radar: '+s.error,'err'); return; }
+    if(s.finished_at){
+      el.textContent = '📡 Hotovo — načítám výsledky…';
+      await loadRadar();
+      renderT();
+      el.style.display = 'none';
+      toast(`Zápisy načteny: ${s.new_documents} nových dokumentů` +
+            (s.hot_found ? `, ${s.hot_found} nadějných 🔥` : '') +
+            ' — otevřete mapu, piny se obarví podle potenciálu.','ok');
+    } else { el.style.display = 'none'; }
+  }catch(e){ _radarPollT = setTimeout(radarPollLoop, 8000); }
+}
+// Kdyby synchronizace běžela už při otevření stránky, ukaž průběh.
+(async()=>{try{const s=await(await fetch(`${RADAR}/api/sync/status`)).json();if(s.running)radarPollLoop();}catch(e){}})();
 
 function radarBadge(ico, small){
   const l = radarFor(ico);
@@ -545,6 +659,12 @@ function renderT(){
       <div class="pill">Obec: <b>${esc(S.obec)}</b></div>
     </div>
     <div class="act-row">
+      <select id="radarScope" title="Rozsah načítání zápisů" style="padding:6px 8px;border-radius:8px;border:1px solid #ddd;font-size:12px">
+        <option value="obec">obec</option>
+        <option value="okres">celý okres</option>
+      </select>
+      <button class="btn-sec" onclick="radarLoadCity()" title="Stáhne a vytěží zápisy ze Sbírky listin">📡 Načíst zápisy</button>
+      <button class="btn-sec" onclick="radarExport()" title="Excel s leady a signály pro obchodníky">🔥 Export leadů</button>
       <button class="btn-sec" onclick="showTab('map');doGeocode()">🗺 Na mapě</button>
       <button class="btn-xl" onclick="doExport()">📊 Excel</button>
     </div>

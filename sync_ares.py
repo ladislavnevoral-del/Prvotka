@@ -20,6 +20,10 @@ def get_db():
         ulice TEXT, cislo_popisne TEXT, cislo_orientacni TEXT,
         psc TEXT, datum_vzniku TEXT, stav TEXT, updated_at TEXT
     )""")
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(subjekty)")}
+    if "okres" not in cols:
+        conn.execute("ALTER TABLE subjekty ADD COLUMN okres TEXT")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_okres ON subjekty(okres)")
     for idx in ["idx_obec", "idx_typ", "idx_cast", "idx_ulice"]:
         col = idx.replace("idx_", "")
         col = {"obec":"obec","typ":"typ","cast":"cast_obce","ulice":"ulice"}[col]
@@ -137,14 +141,15 @@ def uloz_batch(conn, typ, subjekty):
             str(sidlo.get("psc",             "") or ""),
             (s.get("datumVzniku") or "")[:10] or None,
             s.get("stavSubjektu"),
-            datetime.now().isoformat()
+            datetime.now().isoformat(),
+            sidlo.get("nazevOkresu"),
         ))
     if rows:
         conn.executemany("""
             INSERT OR REPLACE INTO subjekty
             (ico,typ,nazev,kraj,kraj_kod,obec,cast_obce,ulice,
-             cislo_popisne,cislo_orientacni,psc,datum_vzniku,stav,updated_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+             cislo_popisne,cislo_orientacni,psc,datum_vzniku,stav,updated_at,okres)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, rows)
         conn.commit()
 

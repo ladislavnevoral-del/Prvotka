@@ -26,6 +26,20 @@ async def root():
 
 DB_FILE = "prvotkar.db"
 
+def _migrate_db():
+    """Doplní sloupec okres do starší databáze (jednorázově)."""
+    if os.path.exists(DB_FILE):
+        conn = sqlite3.connect(DB_FILE)
+        try:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(subjekty)")}
+            if "okres" not in cols:
+                conn.execute("ALTER TABLE subjekty ADD COLUMN okres TEXT")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_okres ON subjekty(okres)")
+                conn.commit()
+        finally:
+            conn.close()
+_migrate_db()
+
 # ── Cache pro VR osoby (24h) ──────────────────────────────────────────────────
 _vr_cache: dict = {}   # ico -> (timestamp, data)
 VR_CACHE_TTL = 86400   # 24 hodin
@@ -69,20 +83,44 @@ async def get_kraje():
     finally:
         conn.close()
 
+@app.get("/api/okresy")
+async def get_okresy(kraj: Optional[str] = None):
+    """Seznam okresů (naplní se po novém běhu sync_ares.py)."""
+    conn = get_db()
+    try:
+        q = "SELECT okres, COUNT(*) n FROM subjekty WHERE okres IS NOT NULL"
+        params = []
+        if kraj:
+            q += " AND kraj = ?"
+            params.append(kraj)
+        q += " GROUP BY okres ORDER BY okres"
+        return [{"okres": r[0], "pocet": r[1]} for r in conn.execute(q, params)]
+    finally:
+        conn.close()
+
 @app.get("/api/svj")
 async def get_svj(
-    obec: str = Query(...),
+    obec: Optional[str] = Query(None),
+    okres: Optional[str] = None,
     ulice: Optional[str] = None,
     cast_obce: Optional[str] = None,
     typ: Optional[str] = "svj",
     start: int = 0,
     pocet: int = 2000,
 ):
+    if not obec and not okres:
+        raise HTTPException(status_code=400, detail="Zadejte obec nebo okres.")
     conn = get_db()
     try:
-        sql_frag, params = obec_filter(obec)
+        if obec:
+            sql_frag, params = obec_filter(obec)
+        else:
+            sql_frag, params = "1=1", []
         params.append(typ)
         filters = f"{sql_frag} AND typ = ?"
+        if okres:
+            filters += " AND okres = ?"
+            params.append(okres)
         if cast_obce:
             filters += " AND cast_obce = ?"
             params.append(cast_obce)
@@ -112,6 +150,7 @@ async def get_svj(
                     "cisloOrientacni": d["cislo_orientacni"],
                     "psc": d["psc"],
                     "nazevKraje": d["kraj"],
+                    "nazevOkresu": d.get("okres"),
                 },
                 "lat": d.get("lat"),
                 "lng": d.get("lng"),
