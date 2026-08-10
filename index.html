@@ -452,19 +452,35 @@ async function fillRadarSec(ico){
     if(!r.ok){ el.innerHTML=''; return; }
     const d = await r.json();
     const c = RADAR_COLORS[d.lead_level] || RADAR_COLORS.LOW;
-    const sigs = [];
-    const seen = new Set();
-    (d.documents||[]).forEach(doc => (doc.signals||[]).forEach(s => {
-      const key = s.label + (s.value||'');
-      if(seen.has(key)) return; seen.add(key);
-      sigs.push(`<span style="display:inline-block;margin:3px 4px 0 0;padding:3px 10px;border-radius:999px;background:${s.value?'#ecfdf5':'#eef2ff'};color:${s.value?'#065f46':'#3730a3'};font-size:12px">${esc(s.label)}${s.value?': '+esc(s.value):''}</span>`);
-    }));
+    const fmtD = x => x ? new Date(x).toLocaleDateString('cs-CZ') : '';
+    let sigId = 0;
+    const docsHtml = (d.documents||[]).filter(doc => (doc.signals||[]).length).map(doc => {
+      const sigs = (doc.signals||[]).map(s => {
+        const id = 'rsig' + (++sigId);
+        const chip = `<span onclick="const e=document.getElementById('${id}');e.style.display=e.style.display==='none'?'block':'none'"
+          style="display:inline-block;margin:3px 4px 0 0;padding:3px 10px;border-radius:999px;cursor:pointer;background:${s.value?'#ecfdf5':'#eef2ff'};color:${s.value?'#065f46':'#3730a3'};font-size:12px"
+          title="Kliknutím zobrazíte, kde v zápisu se to našlo">${esc(s.label)}${s.value?': '+esc(s.value):''} ▾</span>`;
+        const ev = s.evidence
+          ? `<div id="${id}" style="display:none;margin:4px 0 8px;padding:8px 12px;background:#f8fafc;border-left:3px solid ${c};border-radius:0 8px 8px 0;font-size:12px;color:#475569">
+               ${s.keyword?`<b style="color:#1e293b">nalezeno: „${esc(s.keyword)}"</b><br>`:''}„…${esc(s.evidence)}…"</div>`
+          : `<div id="${id}" style="display:none"></div>`;
+        return chip + ev;
+      }).join('');
+      return `<div style="margin-bottom:12px">
+        <div style="font-size:12px;color:var(--text3);margin-bottom:4px">
+          📄 <b style="color:var(--text2)">${esc(doc.title||'listina')}</b>
+          ${doc.date?' · '+fmtD(doc.date):''} · skóre ${doc.score}
+          ${doc.source_url?` · <a href="${esc(doc.source_url)}" target="_blank" rel="noopener" style="color:#2563eb">otevřít listinu na justice.cz ↗</a>`:''}
+        </div>
+        <div>${sigs}</div>
+      </div>`;
+    }).join('');
     el.innerHTML = `<div class="sec"><div class="sec-t">📡 RBD Radar — obchodní potenciál</div>
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
         <span style="padding:6px 14px;border-radius:9px;background:${c};color:#fff;font-weight:700">${d.score}/100 · ${d.lead_level}</span>
-        <span style="font-size:12px;color:var(--text3)">${(d.documents||[]).length} zpracovaných listin</span>
+        <span style="font-size:12px;color:var(--text3)">${(d.documents||[]).length} zpracovaných listin · klikněte na signál pro citaci ze zápisu</span>
       </div>
-      <div>${sigs.join('') || '<span style="font-size:12px;color:var(--text3)">Zatím žádné signály — listiny nebyly zpracovány.</span>'}</div></div>`;
+      ${docsHtml || '<span style="font-size:12px;color:var(--text3)">Zatím žádné signály — listiny nebyly zpracovány.</span>'}</div>`;
   }catch(e){ el.innerHTML=''; }
 }
 // ── konec RBD Radar integrace ────────────────────────────────────────────────
