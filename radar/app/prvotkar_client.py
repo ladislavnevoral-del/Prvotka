@@ -39,10 +39,15 @@ class PrvotkarClient:
         r.raise_for_status()
         return r.json()
 
-    def svj(self, obec: str, ulice: str | None = None,
+    def svj(self, obec: str | None = None, ulice: str | None = None,
             cast_obce: str | None = None, typ: str | None = None,
+            okres: str | None = None,
             start: int = 0, pocet: int = PAGE_SIZE) -> dict:
-        params = {"obec": obec, "start": start, "pocet": pocet}
+        params = {"start": start, "pocet": pocet}
+        if obec:
+            params["obec"] = obec
+        if okres:
+            params["okres"] = okres
         if ulice:
             params["ulice"] = ulice
         if cast_obce:
@@ -54,7 +59,7 @@ class PrvotkarClient:
     def by_ico(self, ico: str) -> dict:
         return self._get(f"/api/ico/{ico}")
 
-    def iter_svj(self, obec: str, **kwargs):
+    def iter_svj(self, obec: str | None = None, **kwargs):
         """Projde všechny stránky výsledků."""
         start = 0
         while True:
@@ -100,20 +105,23 @@ def _subject_from_prvotkar(item: dict) -> dict:
     }
 
 
-def import_obec(obec: str, ulice: str | None = None,
+def import_obec(obec: str | None = None, ulice: str | None = None,
                 cast_obce: str | None = None, typ: str | None = None,
-                limit: int | None = None) -> dict:
+                limit: int | None = None, okres: str | None = None) -> dict:
     """Naimportuje subjekty z Prvotkáře do databáze RBD Radaru."""
     init_db()
     client = PrvotkarClient()
     db = SessionLocal()
     inserted = updated = 0
+    icos: list[str] = []
     try:
         for n, item in enumerate(client.iter_svj(obec, ulice=ulice,
-                                                 cast_obce=cast_obce, typ=typ)):
+                                                 cast_obce=cast_obce, typ=typ,
+                                                 okres=okres)):
             if limit and n >= limit:
                 break
             fields = _subject_from_prvotkar(item)
+            icos.append(fields["ico"])
             subject = db.scalar(
                 select(Subject).where(Subject.ico == fields["ico"]))
             if subject is None:
@@ -138,7 +146,7 @@ def import_obec(obec: str, ulice: str | None = None,
         db.commit()
     finally:
         db.close()
-    return {"inserted": inserted, "updated": updated}
+    return {"inserted": inserted, "updated": updated, "icos": icos}
 
 
 def import_ico(ico: str) -> dict:
