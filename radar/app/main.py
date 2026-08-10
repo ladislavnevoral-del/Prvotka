@@ -70,20 +70,33 @@ def _start_sync(limit: int, city: str | None, max_docs: int,
     return True
 
 
-def _daily_scheduler():
-    """Denní automatická synchronizace (RADAR_DAILY_SYNC=1).
+def _scheduler():
+    """Automatické synchronizace uvnitř webové služby (bez placeného cronu).
 
-    Běží uvnitř webové služby, takže není potřeba placený cron.
-    Čas v UTC nastavuje RADAR_SYNC_HOUR_UTC (výchozí 5 ≈ 7:00 v ČR v létě).
+    RADAR_DAILY_SYNC=1  — ranní kontrola novinek (RADAR_SYNC_HOUR_UTC, vých. 5;
+                          RADAR_SYNC_LIMIT, vých. 15 SVJ; jen čerstvé listiny)
+    RADAR_NIGHT_SYNC=1  — noční dlouhý běh (RADAR_NIGHT_HOUR_UTC, vých. 0;
+                          RADAR_NIGHT_LIMIT, vých. 150 SVJ; hlubší stahování)
     """
-    hour = int(os.getenv("RADAR_SYNC_HOUR_UTC", "5"))
-    limit = int(os.getenv("RADAR_SYNC_LIMIT", "15"))
-    last_run_day = None
+    daily = os.getenv("RADAR_DAILY_SYNC") == "1"
+    night = os.getenv("RADAR_NIGHT_SYNC") == "1"
+    daily_hour = int(os.getenv("RADAR_SYNC_HOUR_UTC", "5"))
+    night_hour = int(os.getenv("RADAR_NIGHT_HOUR_UTC", "0"))
+    daily_limit = int(os.getenv("RADAR_SYNC_LIMIT", "15"))
+    night_limit = int(os.getenv("RADAR_NIGHT_LIMIT", "150"))
+    last_daily = last_night = None
     while True:
         now = datetime.utcnow()
-        if now.hour == hour and last_run_day != now.date():
-            last_run_day = now.date()
-            _start_sync(limit=limit, city=None, max_docs=3, since_days=None)
+        if night and now.hour == night_hour and last_night != now.date():
+            last_night = now.date()
+            # Dlouhý běh: víc SVJ i listin na subjekt; poběží klidně hodiny,
+            # klient drží pauzy, aby nedráždil justice.cz.
+            _start_sync(limit=night_limit, city=None, max_docs=5,
+                        since_days=None)
+        elif daily and now.hour == daily_hour and last_daily != now.date():
+            last_daily = now.date()
+            _start_sync(limit=daily_limit, city=None, max_docs=3,
+                        since_days=90)
         time.sleep(300)
 
 
@@ -91,8 +104,8 @@ def _daily_scheduler():
 def startup():
     Path("data").mkdir(exist_ok=True)
     init_db()
-    if os.getenv("RADAR_DAILY_SYNC") == "1":
-        threading.Thread(target=_daily_scheduler, daemon=True).start()
+    if os.getenv("RADAR_DAILY_SYNC") == "1" or os.getenv("RADAR_NIGHT_SYNC") == "1":
+        threading.Thread(target=_scheduler, daemon=True).start()
 
 
 class SubjectIn(BaseModel):
