@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RBD Radar — leady</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --ink: #1a202c; --muted: #64748b;
+    --line: #e2e8f0; --accent: #2563eb;
+    --hot: #dc2626; --high: #ea580c; --watch: #ca8a04; --low: #94a3b8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    background: var(--card); border-bottom: 1px solid var(--line);
+    padding: 14px 24px; display: flex; align-items: baseline; gap: 16px;
+    position: sticky; top: 0; z-index: 5;
+  }
+  header h1 { font-size: 18px; margin: 0; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  main { max-width: 980px; margin: 0 auto; padding: 20px 16px 60px; }
+
+  .stats { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+  .stat {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 16px; min-width: 130px;
+  }
+  .stat b { display: block; font-size: 22px; }
+  .stat span { color: var(--muted); font-size: 12.5px; }
+
+  .controls { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+  .controls input, .controls select {
+    padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px;
+    font-size: 14px; background: var(--card); color: var(--ink);
+  }
+  .controls input[type=search] { flex: 1; min-width: 200px; }
+
+  .lead {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    margin-bottom: 14px; overflow: hidden;
+  }
+  .lead-head {
+    display: flex; align-items: center; gap: 14px; padding: 14px 18px;
+    cursor: pointer;
+  }
+  .badge {
+    min-width: 62px; text-align: center; padding: 7px 10px; border-radius: 9px;
+    color: #fff; font-weight: 700; font-size: 13px;
+  }
+  .badge small { display: block; font-weight: 400; font-size: 10.5px; opacity: .9; }
+  .b-HOT { background: var(--hot); } .b-HIGH { background: var(--high); }
+  .b-WATCH { background: var(--watch); } .b-LOW { background: var(--low); }
+  .lead-title b { font-size: 15.5px; }
+  .lead-title .addr { color: var(--muted); font-size: 13px; }
+  .chips { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; max-width: 45%; }
+  .chip {
+    background: #eef2ff; color: #3730a3; border-radius: 999px;
+    padding: 2.5px 10px; font-size: 12px; white-space: nowrap;
+  }
+  .chip.val { background: #ecfdf5; color: #065f46; }
+
+  .lead-body { display: none; border-top: 1px solid var(--line); padding: 14px 18px; }
+  .lead.open .lead-body { display: block; }
+  .doc { margin-bottom: 14px; }
+  .doc-head { font-size: 13.5px; color: var(--muted); margin-bottom: 8px; }
+  .doc-head b { color: var(--ink); }
+  .sig {
+    border-left: 3px solid var(--accent); background: #f8fafc;
+    padding: 8px 12px; margin: 6px 0; border-radius: 0 8px 8px 0;
+  }
+  .sig .lab { font-weight: 600; font-size: 13.5px; }
+  .sig .lab .v { color: #065f46; }
+  .sig .ev { color: var(--muted); font-size: 12.5px; margin-top: 3px; display: none; }
+  .sig.open .ev { display: block; }
+  .sig .toggle { color: var(--accent); font-size: 12px; cursor: pointer; user-select: none; }
+  .empty { text-align: center; color: var(--muted); padding: 60px 0; }
+  a { color: var(--accent); text-decoration: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>RBD Radar</h1>
+  <span class="sub">obchodní příležitosti SVJ ze Sbírky listin</span>
+</header>
+<main>
+  <div class="stats" id="stats"></div>
+  <div class="controls">
+    <input type="search" id="q" placeholder="Hledat podle názvu, adresy nebo IČO…">
+    <select id="minScore">
+      <option value="1">Vše</option>
+      <option value="35">WATCH a lepší (35+)</option>
+      <option value="60" selected>HIGH a lepší (60+)</option>
+      <option value="80">Jen HOT (80+)</option>
+    </select>
+  </div>
+  <div id="leads"><div class="empty">Načítám…</div></div>
+</main>
+<script>
+const fmtDate = d => d ? new Date(d).toLocaleDateString('cs-CZ') : '—';
+const esc = s => (s ?? '').toString().replace(/[&<>"]/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+let LEADS = [];
+
+async function loadStats() {
+  try {
+    const s = await (await fetch('/api/stats')).json();
+    document.getElementById('stats').innerHTML = `
+      <div class="stat"><b>${s.subjects.toLocaleString('cs-CZ')}</b><span>SVJ v databázi</span></div>
+      <div class="stat"><b>${s.documents}</b><span>zpracovaných listin</span></div>
+      <div class="stat"><b>${s.signals}</b><span>obchodních signálů</span></div>
+      <div class="stat"><b>${s.hot_leads}</b><span>nadějných dokumentů (60+)</span></div>`;
+  } catch (e) { /* stats nejsou kritické */ }
+}
+
+async function loadLeads() {
+  const minScore = document.getElementById('minScore').value;
+  const res = await fetch(`/api/leads?min_score=${minScore}&limit=200`);
+  LEADS = await res.json();
+  render();
+}
+
+function topChips(lead) {
+  const seen = new Set(); const chips = [];
+  for (const doc of lead.documents) {
+    for (const s of doc.signals) {
+      if (seen.has(s.type || s.label)) continue;
+      seen.add(s.type || s.label);
+      chips.push(s.value
+        ? `<span class="chip val">${esc(s.label)}: ${esc(s.value)}</span>`
+        : `<span class="chip">${esc(s.label)}</span>`);
+      if (chips.length >= 5) return chips;
+    }
+  }
+  return chips;
+}
+
+function render() {
+  const q = document.getElementById('q').value.trim().toLowerCase();
+  const box = document.getElementById('leads');
+  const rows = LEADS.filter(l =>
+    !q || `${l.name} ${l.address ?? ''} ${l.ico}`.toLowerCase().includes(q));
+
+  if (!rows.length) {
+    box.innerHTML = '<div class="empty">Žádné leady. Zkuste snížit minimální skóre,<br>nebo nejdřív zpracujte listiny (python -m app.pipeline).</div>';
+    return;
+  }
+
+  box.innerHTML = rows.map((l, i) => `
+    <div class="lead" id="lead${i}">
+      <div class="lead-head" onclick="document.getElementById('lead${i}').classList.toggle('open')">
+        <div class="badge b-${l.lead_level}">${l.score}<small>${l.lead_level}</small></div>
+        <div class="lead-title">
+          <b>${esc(l.name)}</b><br>
+          <span class="addr">${esc(l.address ?? l.city ?? '')} · IČO ${esc(l.ico)}</span>
+        </div>
+        <div class="chips">${topChips(l).join('')}</div>
+      </div>
+      <div class="lead-body">
+        ${l.documents.map(d => `
+          <div class="doc">
+            <div class="doc-head">
+              <b>${esc(d.title)}</b>
+              ${d.doc_type ? ' · ' + esc(d.doc_type) : ''}
+              · ${fmtDate(d.meeting_date || d.document_date)}
+              · skóre ${d.score}
+              ${d.ocr_used ? ' · OCR' : ''}
+              ${d.source_url ? ` · <a href="${esc(d.source_url)}" target="_blank" rel="noopener">listina ↗</a>` : ''}
+            </div>
+            ${d.signals.map((s, j) => `
+              <div class="sig" id="sig${i}_${d.document_id}_${j}">
+                <span class="lab">${esc(s.label)}${s.value ? ` <span class="v">= ${esc(s.value)}</span>` : ''}</span>
+                <span style="color:var(--muted);font-size:12px"> · ${esc(s.category)} · +${s.points} b.</span>
+                ${s.evidence ? `<span class="toggle" onclick="this.parentElement.classList.toggle('open')"> kontext</span>
+                <div class="ev">„…${esc(s.evidence)}…“</div>` : ''}
+              </div>`).join('')}
+          </div>`).join('')}
+      </div>
+    </div>`).join('');
+}
+
+document.getElementById('q').addEventListener('input', render);
+document.getElementById('minScore').addEventListener('change', loadLeads);
+loadStats();
+loadLeads();
+</script>
+</body>
+</html>
