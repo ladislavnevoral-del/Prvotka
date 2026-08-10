@@ -175,9 +175,18 @@ def sync_obec(conn, typ, kod_pf, kod_obce, nazev_obce):
     return celkem
 
 def sync_obec_po_pismenech(conn, typ, kod_pf, kod_obce, prefix="", depth=0):
-    """Rekurzivní fallback pro velká města – jde hlouběji pokud prefix stále příliš velký (max 5 znaků)."""
+    """Rekurzivní fallback pro velká města.
+
+    Oprava úplnosti: dřívější limit depth<4 (prefix max 5 znaků) tiše
+    zahazoval subjekty, jejichž prefix byl i v hloubce 5 stále >1000
+    výsledků — v Brně tak chyběly tisíce SVJ začínajících
+    "Společenství vlastníků…". Nově jdeme do hloubky 12 a znaková sada
+    obsahuje i mezeru a interpunkci, takže se prefix umí prodloužit
+    přes celé slovo ("SPOLEČENSTVÍ " …). Když i tak narazíme na limit,
+    hlasitě to ohlásíme, místo abychom data tiše ztratili.
+    """
     celkem = 0
-    znaky  = "ABCČDĎEÉĚFGHIÍJKLMNŇOÓPQRŘSŠTŤUÚŮVWXYÝZŽ0123456789"
+    znaky  = "ABCČDĎEÉĚFGHIÍJKLMNŇOÓPQRŘSŠTŤUÚŮVWXYÝZŽ0123456789 .,-'\"&()"
     for z in znaky:
         current = prefix + z
         start   = 0
@@ -192,8 +201,11 @@ def sync_obec_po_pismenech(conn, typ, kod_pf, kod_obce, prefix="", depth=0):
             if not d:
                 break
             if d.get("subKod") == "VYSTUP_PRILIS_MNOHO_VYSLEDKU":
-                if depth < 4:
+                if depth < 12:
                     celkem += sync_obec_po_pismenech(conn, typ, kod_pf, kod_obce, current, depth + 1)
+                else:
+                    print(f"\n  ⚠️ Prefix '{current}' má stále >1000 výsledků "
+                          f"— část subjektů obce {kod_obce} může chybět!")
                 break
             subjekty = d.get("ekonomickeSubjekty", [])
             if not subjekty:
