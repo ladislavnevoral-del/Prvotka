@@ -29,6 +29,23 @@ from .signal_engine import detect_signals, score_signals, lead_level
 
 LISTINY_DIR = Path("data/listiny")
 
+# Stav běžící synchronizace (čte ho /api/sync/status a dashboard).
+SYNC_STATE = {
+    "running": False,
+    "started_at": None,
+    "finished_at": None,
+    "progress": "",
+    "processed_subjects": 0,
+    "new_documents": 0,
+    "hot_found": 0,
+    "error": None,
+}
+
+
+def _state_update(state, **kwargs):
+    if state is not None:
+        state.update(kwargs)
+
 # ---------------------------------------------------------------------------
 # Váha podle typu dokumentu
 #
@@ -150,7 +167,8 @@ def ingest_pdf(db: Session, subject: Subject, pdf_path: str | Path, *,
 # ---------------------------------------------------------------------------
 
 def sync_subject(db: Session, subject: Subject, client=None,
-                 max_docs: int = 5, only_interesting: bool = True) -> dict:
+                 max_docs: int = 5, only_interesting: bool = True,
+                 since: datetime | None = None) -> dict:
     """Stáhne a zpracuje nové listiny jednoho SVJ."""
     from .listiny import ListinyClient
 
@@ -174,6 +192,7 @@ def sync_subject(db: Session, subject: Subject, client=None,
         l for l in listiny
         if (not only_interesting or l.is_interesting)
         and l.external_id not in known_ids
+        and (since is None or ((l.zalozeno or l.vznik or datetime.min) >= since))
     ]
     # Nejnovější napřed.
     candidates.sort(key=lambda l: l.vznik or datetime.min, reverse=True)
@@ -207,8 +226,13 @@ def sync_subject(db: Session, subject: Subject, client=None,
 
 
 def sync_many(db: Session, limit: int = 10, city: str | None = None,
-              max_docs: int = 3) -> list[dict]:
-    """Projde více SVJ — přednostně ta s nejnovějším zápisem v rejstříku."""
+              max_docs: int = 3, since_days: int | None = None,
+              state: dict | None = None) -> list[dict]:
+    """Projde více SVJ — přednostně ta s nejnovějším zápisem v rejstříku.
+
+    since_days: stahovat jen listiny založené/vzniklé za posledních N dní.
+    state: volitelný slovník, do kterého se průběžně hlásí postup.
+    """
     from .listiny import ListinyClient
 
     q = select(Subject).order_by(desc(Subject.last_entry_date)).limit(limit)
@@ -216,12 +240,29 @@ def sync_many(db: Session, limit: int = 10, city: str | None = None,
         q = (select(Subject).where(Subject.city.ilike(f"%{city}%"))
              .order_by(desc(Subject.last_entry_date)).limit(limit))
 
+    since = None
+    if since_days:
+        from datetime import timedelta
+        since = datetime.utcnow() - timedelta(days=since_days)
+
     client = ListinyClient()
     results = []
-    for subject in db.scalars(q):
+    subjects = db.scalars(q).all()
+    for n, subject in enumerate(subjects, 1):
         print(f"» {subject.name} (IČO {subject.ico})")
+        _state_update(state,
+                      progress=f"{n}/{len(subjects)}: {subject.name}",
+                      processed_subjects=n)
         try:
-            results.append(sync_subject(db, subject, client, max_docs=max_docs))
+            res = sync_subject(db, subject, client, max_docs=max_docs,
+                               since=since)
+            results.append(res)
+            if state is not None:
+                new_docs = [d for d in res.get("documents", [])
+                            if not d.get("duplicate") and not d.get("error")]
+                state["new_documents"] += len(new_docs)
+                state["hot_found"] += sum(
+                    1 for d in new_docs if d.get("score", 0) >= 60)
         except Exception as exc:
             print(f"  ! přeskočeno: {exc}")
             results.append({"ico": subject.ico, "error": str(exc)})
@@ -288,6 +329,8 @@ def main():
                         help="Počet SVJ pro --sync-all")
     parser.add_argument("--max-docs", type=int, default=5,
                         help="Max. počet listin na jedno SVJ")
+    parser.add_argument("--since-days", type=int, default=None,
+                        help="Stahovat jen listiny za posledních N dní")
     parser.add_argument("--rescore", action="store_true",
                         help="Přepočítat skóre všech uložených dokumentů "
                              "aktuálními pravidly")
@@ -326,7 +369,8 @@ def main():
                 _print_outcome(docres)
         elif args.sync_all:
             results = sync_many(db, limit=args.limit, city=args.city,
-                                max_docs=args.max_docs)
+                                max_docs=args.max_docs,
+                                since_days=args.since_days)
             hot = [r for r in results for d in r.get("documents", [])
                    if d.get("score", 0) >= 60]
             print(f"\nHotovo. Subjektů: {len(results)}, "
