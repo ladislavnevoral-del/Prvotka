@@ -1,35 +1,9 @@
-# Render Blueprint pro RBD Radar
-# Nasazení: dashboard.render.com -> New -> Blueprint -> vybrat repo s tímto souborem.
-
-databases:
-  - name: rbd-radar-db
-    plan: basic-256mb          # nejmenší placený Postgres (free Postgres Render zrušil)
-    databaseName: rbd_radar
-    user: rbd_radar
-
 services:
-  # Webová služba: API + dashboard
   - type: web
-    name: rbd-radar
-    runtime: docker
-    plan: starter              # 512 MB RAM; OCR by na free (256 MB) nemuselo stačit
-    healthCheckPath: /api/health
+    name: prvotkar
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python start.py
     envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: rbd-radar-db
-          property: connectionString
-      - key: RADAR_API_KEY
-        generateValue: true    # klíč pro zápisové endpointy (X-API-Key)
-
-  # Denní synchronizace Sbírky listin (5:30 UTC = 7:30 v létě v ČR)
-  - type: cron
-    name: rbd-radar-sync
-    runtime: docker
-    schedule: "30 5 * * *"
-    dockerCommand: python -m app.pipeline --sync-all --limit 15 --max-docs 3
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: rbd-radar-db
-          property: connectionString
+      - key: PORT
+        value: 8000
