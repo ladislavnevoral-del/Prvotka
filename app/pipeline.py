@@ -227,18 +227,30 @@ def sync_subject(db: Session, subject: Subject, client=None,
 
 def sync_many(db: Session, limit: int = 10, city: str | None = None,
               max_docs: int = 3, since_days: int | None = None,
-              state: dict | None = None) -> list[dict]:
+              state: dict | None = None,
+              icos: list[str] | None = None) -> list[dict]:
     """Projde více SVJ — přednostně ta s nejnovějším zápisem v rejstříku.
 
     since_days: stahovat jen listiny založené/vzniklé za posledních N dní.
+    icos: explicitní seznam IČO (např. celý okres z Prvotkáře).
     state: volitelný slovník, do kterého se průběžně hlásí postup.
     """
     from .listiny import ListinyClient
 
-    q = select(Subject).order_by(desc(Subject.last_entry_date)).limit(limit)
-    if city:
+    # Rotační fronta: nejdřív domy, které ještě nikdy nebyly zkontrolované,
+    # pak ty s nejstarší kontrolou. Opakované běhy tak postupně pokryjí
+    # celou databázi, místo aby dokola procházely stejné subjekty.
+    rotation = (Subject.listiny_checked_at.asc().nullsfirst(),
+                desc(Subject.last_entry_date))
+    if icos:
+        normalized = {i.lstrip("0") for i in icos if i}
+        q = (select(Subject).where(Subject.ico.in_(normalized))
+             .order_by(*rotation).limit(max(limit, len(normalized))))
+    elif city:
         q = (select(Subject).where(Subject.city.ilike(f"%{city}%"))
-             .order_by(desc(Subject.last_entry_date)).limit(limit))
+             .order_by(*rotation).limit(limit))
+    else:
+        q = select(Subject).order_by(*rotation).limit(limit)
 
     since = None
     if since_days:

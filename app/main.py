@@ -135,20 +135,23 @@ def _scheduler():
     daily_hour = int(os.getenv("RADAR_SYNC_HOUR_UTC", "5"))
     night_hour = int(os.getenv("RADAR_NIGHT_HOUR_UTC", "0"))
     daily_limit = int(os.getenv("RADAR_SYNC_LIMIT", "15"))
-    night_limit = int(os.getenv("RADAR_NIGHT_LIMIT", "150"))
+    night_limit = int(os.getenv("RADAR_NIGHT_LIMIT", "400"))
+    # Stahovat jen listiny mladší než N dní (výchozí: 1 rok).
+    since_days = int(os.getenv("RADAR_SYNC_SINCE_DAYS", "365"))
     last_daily = last_night = None
     while True:
         now = datetime.utcnow()
         if night and now.hour == night_hour and last_night != now.date():
             last_night = now.date()
-            # Dlouhý běh: víc SVJ i listin na subjekt; poběží klidně hodiny,
-            # klient drží pauzy, aby nedráždil justice.cz.
+            # Dlouhý běh přes rotační frontu: nejdřív nikdy nekontrolované
+            # domy, pak nejstarší kontroly. Poběží klidně hodiny; klient
+            # drží pauzy, aby nedráždil justice.cz.
             _start_sync(limit=night_limit, city=None, max_docs=5,
-                        since_days=None)
+                        since_days=since_days)
         elif daily and now.hour == daily_hour and last_daily != now.date():
             last_daily = now.date()
             _start_sync(limit=daily_limit, city=None, max_docs=3,
-                        since_days=90)
+                        since_days=min(since_days, 90))
         time.sleep(300)
 
 
